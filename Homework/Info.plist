@@ -6,5 +6,9 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs access to the camera to take photos of homework assignments.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to the photo library to select homework images.</string>
 </dict>
 </plist>

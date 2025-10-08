@@ -16,6 +16,11 @@ struct ContentView: View {
         animation: .default)
     private var items: FetchedResults<Item>
 
+    @State private var selectedImage: UIImage?
+    @State private var showImagePicker = false
+    @State private var imageSourceType: UIImagePickerController.SourceType = .camera
+    @State private var showActionSheet = false
+
     var body: some View {
         NavigationView {
             List {
@@ -33,12 +38,32 @@ struct ContentView: View {
                     EditButton()
                 }
                 ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                    Button(action: { showActionSheet = true }) {
+                        Label("Add Homework", systemImage: "camera")
                     }
                 }
             }
             Text("Select an item")
+        }
+        .confirmationDialog("Add Homework", isPresented: $showActionSheet) {
+            Button("Take Photo") {
+                imageSourceType = .camera
+                showImagePicker = true
+            }
+            Button("Choose from Library") {
+                imageSourceType = .photoLibrary
+                showImagePicker = true
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker(selectedImage: $selectedImage, sourceType: imageSourceType)
+        }
+        .onChange(of: selectedImage) { oldValue, newValue in
+            if newValue != nil {
+                // TODO: Save image with homework item
+                addItem()
+            }
         }
     }
 

@@ -43,14 +43,29 @@ struct HomeworkListView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 EditButton()
+                    .buttonStyle(GlassmorphicButtonStyle())
             }
             ToolbarItem {
                 Button(action: onAddHomework) {
                     Label("Add Homework", systemImage: "camera")
                 }
+                .buttonStyle(GlassmorphicButtonStyle())
             }
         }
         .navigationTitle("Homework")
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarBackground(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.1, green: 0.1, blue: 0.15),
+                    Color(red: 0.15, green: 0.15, blue: 0.2)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            ),
+            for: .navigationBar
+        )
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
     // MARK: - Private Methods

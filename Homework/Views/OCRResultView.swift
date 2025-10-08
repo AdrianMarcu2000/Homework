@@ -42,12 +42,27 @@ struct OCRResultView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel", action: onCancel)
+                        .buttonStyle(GlassmorphicButtonStyle())
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save", action: onSave)
                         .disabled(extractedText.isEmpty)
+                        .buttonStyle(GlassmorphicButtonStyle())
                 }
             }
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.1, green: 0.1, blue: 0.15),
+                        Color(red: 0.15, green: 0.15, blue: 0.2)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                for: .navigationBar
+            )
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 }

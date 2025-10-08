@@ -19,6 +19,18 @@ class OCRService {
 
     private init() {}
 
+    /// Represents an OCR text block with position information
+    struct OCRBlock {
+        let text: String
+        let y: Double // Normalized Y coordinate (0.0 to 1.0)
+    }
+
+    /// Result containing both concatenated text and positioned blocks
+    struct OCRResult {
+        let fullText: String
+        let blocks: [OCRBlock]
+    }
+
     /// Recognizes and extracts text from a given image using Vision framework.
     ///
     /// This method performs OCR asynchronously on a background queue with accurate
@@ -31,6 +43,25 @@ class OCRService {
     ///
     /// - Note: The recognized text contains line breaks separating different text observations
     func recognizeText(from image: UIImage, completion: @escaping (Result<String, Error>) -> Void) {
+        recognizeTextWithBlocks(from: image) { result in
+            switch result {
+            case .success(let ocrResult):
+                completion(.success(ocrResult.fullText))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Recognizes and extracts text with position information from an image.
+    ///
+    /// This method performs OCR and returns both the full text and individual text blocks
+    /// with their Y coordinates for use in AI analysis.
+    ///
+    /// - Parameters:
+    ///   - image: The UIImage to perform text recognition on
+    ///   - completion: A completion handler with OCRResult containing text and blocks
+    func recognizeTextWithBlocks(from image: UIImage, completion: @escaping (Result<OCRResult, Error>) -> Void) {
         guard let cgImage = image.cgImage else {
             completion(.failure(OCRError.invalidImage))
             return
@@ -48,14 +79,29 @@ class OCRService {
                 return
             }
 
-            let recognizedText = observations.compactMap { observation in
-                observation.topCandidates(1).first?.string
-            }.joined(separator: "\n")
+            // Extract text and position blocks
+            var blocks: [OCRBlock] = []
+            var textStrings: [String] = []
 
-            if recognizedText.isEmpty {
+            for observation in observations {
+                if let text = observation.topCandidates(1).first?.string {
+                    textStrings.append(text)
+
+                    // Get the Y coordinate (normalized 0.0 to 1.0, where 0 is top)
+                    let boundingBox = observation.boundingBox
+                    let yCoordinate = boundingBox.origin.y
+
+                    blocks.append(OCRBlock(text: text, y: yCoordinate))
+                }
+            }
+
+            let fullText = textStrings.joined(separator: "\n")
+
+            if fullText.isEmpty {
                 completion(.failure(OCRError.noTextFound))
             } else {
-                completion(.success(recognizedText))
+                let result = OCRResult(fullText: fullText, blocks: blocks)
+                completion(.success(result))
             }
         }
 

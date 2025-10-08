@@ -175,23 +175,28 @@ struct HomeworkDetailView: View {
                                     .shadow(radius: 5)
                             }
 
-                            // Text on the right
-                            if let text = item.extractedText, !text.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Extracted Text")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
+                            // Analysis content on the right
+                            VStack(alignment: .leading, spacing: 16) {
+                                if let analysis = item.analysisResult {
+                                    LessonsAndExercisesView(analysis: analysis)
+                                } else if let text = item.extractedText, !text.isEmpty {
+                                    // Fallback to raw text if no analysis
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Extracted Text")
+                                            .font(.headline)
+                                            .foregroundColor(.secondary)
 
-                                    ScrollView {
-                                        Text(text)
-                                            .font(.body)
-                                            .textSelection(.enabled)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        ScrollView {
+                                            Text(text)
+                                                .font(.body)
+                                                .textSelection(.enabled)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .padding()
+                                        .frame(maxHeight: 500)
+                                        .background(Color.secondary.opacity(0.1))
+                                        .cornerRadius(8)
                                     }
-                                    .padding()
-                                    .frame(maxHeight: 500)
-                                    .background(Color.secondary.opacity(0.1))
-                                    .cornerRadius(8)
                                 }
                             }
                         }
@@ -210,8 +215,11 @@ struct HomeworkDetailView: View {
                                     .padding(.horizontal)
                             }
 
-                            // Display the extracted text
-                            if let text = item.extractedText, !text.isEmpty {
+                            // Display lessons and exercises or fallback to text
+                            if let analysis = item.analysisResult {
+                                LessonsAndExercisesView(analysis: analysis)
+                                    .padding(.horizontal)
+                            } else if let text = item.extractedText, !text.isEmpty {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Extracted Text")
                                         .font(.headline)

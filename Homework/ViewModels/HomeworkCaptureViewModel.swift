@@ -39,6 +39,12 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// Controls the visibility of the text extraction result sheet
     @Published var showTextSheet = false
 
+    /// Stores the OCR blocks with position information for AI analysis
+    private var ocrBlocks: [OCRService.OCRBlock] = []
+
+    /// Stores the AI analysis result
+    private var analysisResult: AIAnalysisService.AnalysisResult?
+
     // MARK: - Private Properties
 
     /// The Core Data managed object context for database operations (used for initialization)
@@ -76,25 +82,68 @@ class HomeworkCaptureViewModel: ObservableObject {
     ///
     /// This method:
     /// 1. Shows the text sheet with a progress indicator
-    /// 2. Calls OCRService to extract text from the image
-    /// 3. Updates the UI with extracted text or error message on completion
+    /// 2. Calls OCRService to extract text and position blocks from the image
+    /// 3. Performs AI analysis to segment lessons and exercises
+    /// 4. Updates the UI with extracted text or error message on completion
     ///
     /// - Parameter image: The UIImage to perform text recognition on
     func performOCR(on image: UIImage) {
         isProcessingOCR = true
         showTextSheet = true
         extractedText = ""
+        ocrBlocks = []
+        analysisResult = nil
 
-        OCRService.shared.recognizeText(from: image) { [weak self] result in
+        // Step 1: Perform OCR with block position information
+        OCRService.shared.recognizeTextWithBlocks(from: image) { [weak self] result in
+            guard let self = self else { return }
+
+            switch result {
+            case .success(let ocrResult):
+                DispatchQueue.main.async {
+                    self.extractedText = ocrResult.fullText
+                    self.ocrBlocks = ocrResult.blocks
+                }
+
+                // Step 2: Perform AI analysis to segment the content
+                self.analyzeHomeworkContent(image: image, ocrBlocks: ocrResult.blocks)
+
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self.isProcessingOCR = false
+                    self.extractedText = "OCR Error: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// Analyzes homework content to identify lessons and exercises using AI
+    ///
+    /// - Parameters:
+    ///   - image: The homework image
+    ///   - ocrBlocks: OCR text blocks with position information
+    private func analyzeHomeworkContent(image: UIImage, ocrBlocks: [OCRService.OCRBlock]) {
+        // Convert OCRService.OCRBlock to AIAnalysisService.OCRBlock
+        let aiBlocks = ocrBlocks.map { block in
+            AIAnalysisService.OCRBlock(text: block.text, y: block.y)
+        }
+
+        AIAnalysisService.shared.analyzeHomework(
+            image: image,
+            ocrBlocks: aiBlocks
+        ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
                 self.isProcessingOCR = false
+
                 switch result {
-                case .success(let text):
-                    self.extractedText = text
-                case .failure(let error):
-                    self.extractedText = "Error: \(error.localizedDescription)"
+                case .success(let analysis):
+                    self.analysisResult = analysis
+
+                case .failure:
+                    print ("Problem")
+                    // Continue with just OCR text if AI analysis fails
                 }
             }
         }
@@ -103,7 +152,7 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// Saves the current homework item with extracted text to Core Data.
     ///
     /// This method creates a new Item entity with the current timestamp,
-    /// extracted text, and image data, then saves it to the persistent store.
+    /// extracted text, image data, and AI analysis results, then saves it to the persistent store.
     ///
     /// - Parameter context: The NSManagedObjectContext to use for saving
     func saveHomework(context: NSManagedObjectContext) {
@@ -116,6 +165,20 @@ class HomeworkCaptureViewModel: ObservableObject {
             if let image = selectedImage,
                let imageData = image.jpegData(compressionQuality: 0.8) {
                 newItem.imageData = imageData
+            }
+
+            // Save AI analysis result as JSON
+            if let analysis = analysisResult {
+                do {
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = .prettyPrinted
+                    let jsonData = try encoder.encode(analysis)
+                    if let jsonString = String(data: jsonData, encoding: .utf8) {
+                        newItem.analysis = jsonString
+                    }
+                } catch {
+                    print("Error encoding analysis result: \(error)")
+                }
             }
 
             do {

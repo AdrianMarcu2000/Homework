@@ -27,9 +27,6 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// Determines whether to use camera or photo library
     @Published var imageSourceType: UIImagePickerController.SourceType = .camera
 
-    /// Controls the visibility of the action sheet for choosing image source
-    @Published var showActionSheet = false
-
     /// Stores the text extracted from the homework image via OCR
     @Published var extractedText: String = ""
 
@@ -60,11 +57,6 @@ class HomeworkCaptureViewModel: ObservableObject {
     }
 
     // MARK: - Public Methods
-
-    /// Presents the action sheet to choose between camera and photo library.
-    func showImageSourceSelection() {
-        showActionSheet = true
-    }
 
     /// Selects the camera as the image source and presents the image picker.
     func selectCamera() {

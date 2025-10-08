@@ -24,8 +24,11 @@ struct HomeworkListView: View {
     /// Core Data managed object context
     @Environment(\.managedObjectContext) private var viewContext
 
-    /// Callback triggered when the add homework button is tapped
-    var onAddHomework: () -> Void
+    /// Callback triggered when the camera button is tapped
+    var onTakePhoto: () -> Void
+
+    /// Callback triggered when the photo library button is tapped
+    var onChooseFromLibrary: () -> Void
 
     /// Binding to the currently selected item
     @Binding var selectedItem: Item?
@@ -41,15 +44,22 @@ struct HomeworkListView: View {
             .onDelete(perform: deleteItems)
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .navigationBarLeading) {
                 EditButton()
                     .buttonStyle(GlassmorphicButtonStyle())
             }
-            ToolbarItem {
-                Button(action: onAddHomework) {
-                    Label("Add Homework", systemImage: "camera")
+            ToolbarItem(placement: .navigationBarTrailing) {
+                HStack(spacing: 8) {
+                    Button(action: onTakePhoto) {
+                        Label("Camera", systemImage: "camera")
+                    }
+                    .buttonStyle(GlassmorphicButtonStyle())
+
+                    Button(action: onChooseFromLibrary) {
+                        Label("Library", systemImage: "photo")
+                    }
+                    .buttonStyle(GlassmorphicButtonStyle())
                 }
-                .buttonStyle(GlassmorphicButtonStyle())
             }
         }
         .navigationTitle("Homework")
@@ -262,7 +272,8 @@ private let itemFormatter: DateFormatter = {
 #Preview {
     NavigationView {
         HomeworkListView(
-            onAddHomework: {},
+            onTakePhoto: {},
+            onChooseFromLibrary: {},
             selectedItem: .constant(nil)
         )
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)

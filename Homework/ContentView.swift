@@ -49,7 +49,8 @@ private struct ContentViewInternal: View {
     var body: some View {
         NavigationView {
             HomeworkListView(
-                onAddHomework: viewModel.showImageSourceSelection,
+                onTakePhoto: viewModel.selectCamera,
+                onChooseFromLibrary: viewModel.selectPhotoLibrary,
                 selectedItem: $selectedItem
             )
             .environment(\.managedObjectContext, viewContext)
@@ -66,18 +67,13 @@ private struct ContentViewInternal: View {
                     Text("Select a homework item")
                         .font(.title2)
                         .foregroundColor(.secondary)
-                    Text("or tap the camera button to add new homework")
+                    Text("or tap the camera/photo buttons to add new homework")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
             }
-        }
-        .confirmationDialog("Add Homework", isPresented: $viewModel.showActionSheet) {
-            Button("Take Photo", action: viewModel.selectCamera)
-            Button("Choose from Library", action: viewModel.selectPhotoLibrary)
-            Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $viewModel.showImagePicker) {
             ImagePicker(

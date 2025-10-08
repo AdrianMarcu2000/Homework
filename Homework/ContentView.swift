@@ -38,6 +38,9 @@ private struct ContentViewInternal: View {
     /// View model managing homework capture state and logic
     @StateObject private var viewModel: HomeworkCaptureViewModel
 
+    /// Currently selected homework item for detail view
+    @State private var selectedItem: Item?
+
     init() {
         // Initialize with a temporary context; will use environment context
         _viewModel = StateObject(wrappedValue: HomeworkCaptureViewModel(context: PersistenceController.shared.container.viewContext))
@@ -45,9 +48,31 @@ private struct ContentViewInternal: View {
 
     var body: some View {
         NavigationView {
-            HomeworkListView(onAddHomework: viewModel.showImageSourceSelection)
-                .environment(\.managedObjectContext, viewContext)
-            Text("Select an item")
+            HomeworkListView(
+                onAddHomework: viewModel.showImageSourceSelection,
+                selectedItem: $selectedItem
+            )
+            .environment(\.managedObjectContext, viewContext)
+
+            // Main body content
+            if let item = selectedItem {
+                HomeworkDetailView(item: item)
+            } else {
+                // Empty state
+                VStack(spacing: 16) {
+                    Image(systemName: "doc.text.image")
+                        .font(.system(size: 60))
+                        .foregroundColor(.secondary)
+                    Text("Select a homework item")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                    Text("or tap the camera button to add new homework")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+            }
         }
         .confirmationDialog("Add Homework", isPresented: $viewModel.showActionSheet) {
             Button("Take Photo", action: viewModel.selectCamera)

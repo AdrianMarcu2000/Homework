@@ -27,16 +27,16 @@ struct HomeworkListView: View {
     /// Callback triggered when the add homework button is tapped
     var onAddHomework: () -> Void
 
+    /// Binding to the currently selected item
+    @Binding var selectedItem: Item?
+
     // MARK: - Body
 
     var body: some View {
-        List {
+        List(selection: $selectedItem) {
             ForEach(items) { item in
-                NavigationLink {
-                    HomeworkDetailView(item: item)
-                } label: {
-                    HomeworkRowView(item: item)
-                }
+                HomeworkRowView(item: item)
+                    .tag(item)
             }
             .onDelete(perform: deleteItems)
         }
@@ -92,7 +92,49 @@ struct HomeworkRowView: View {
     let item: Item
 
     var body: some View {
-        Text(item.timestamp!, formatter: itemFormatter)
+        HStack(spacing: 12) {
+            // Thumbnail image
+            if let imageData = item.imageData,
+               let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 60, height: 60)
+                    .cornerRadius(8)
+                    .clipped()
+            } else {
+                // Placeholder if no image
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(width: 60, height: 60)
+                    .overlay(
+                        Image(systemName: "doc.text.image")
+                            .foregroundColor(.secondary)
+                    )
+            }
+
+            // Text preview and timestamp
+            VStack(alignment: .leading, spacing: 4) {
+                if let text = item.extractedText, !text.isEmpty {
+                    Text(text)
+                        .font(.body)
+                        .lineLimit(2)
+                        .foregroundColor(.primary)
+                } else {
+                    Text("No text extracted")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+
+                Text(item.timestamp!, formatter: itemFormatter)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -101,8 +143,99 @@ struct HomeworkDetailView: View {
     let item: Item
 
     var body: some View {
-        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-            .navigationTitle("Details")
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Header with timestamp
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Homework Details")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            Text(item.timestamp!, formatter: itemFormatter)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+
+                    // Side-by-side layout for iPad/large screens, stacked for iPhone
+                    if geometry.size.width > 600 {
+                        // Horizontal layout for larger screens
+                        HStack(alignment: .top, spacing: 20) {
+                            // Image on the left
+                            if let imageData = item.imageData,
+                               let uiImage = UIImage(data: imageData) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: geometry.size.width * 0.45)
+                                    .cornerRadius(12)
+                                    .shadow(radius: 5)
+                            }
+
+                            // Text on the right
+                            if let text = item.extractedText, !text.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Extracted Text")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+
+                                    ScrollView {
+                                        Text(text)
+                                            .font(.body)
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .padding()
+                                    .frame(maxHeight: 500)
+                                    .background(Color.secondary.opacity(0.1))
+                                    .cornerRadius(8)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    } else {
+                        // Vertical layout for smaller screens
+                        VStack(alignment: .leading, spacing: 20) {
+                            // Display the scanned image
+                            if let imageData = item.imageData,
+                               let uiImage = UIImage(data: imageData) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .cornerRadius(12)
+                                    .shadow(radius: 5)
+                                    .padding(.horizontal)
+                            }
+
+                            // Display the extracted text
+                            if let text = item.extractedText, !text.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Extracted Text")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+
+                                    Text(text)
+                                        .font(.body)
+                                        .textSelection(.enabled)
+                                        .padding()
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Color.secondary.opacity(0.1))
+                                        .cornerRadius(8)
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+
+                    Spacer()
+                }
+                .padding(.vertical)
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -120,7 +253,10 @@ private let itemFormatter: DateFormatter = {
 
 #Preview {
     NavigationView {
-        HomeworkListView(onAddHomework: {})
-            .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+        HomeworkListView(
+            onAddHomework: {},
+            selectedItem: .constant(nil)
+        )
+        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
     }
 }

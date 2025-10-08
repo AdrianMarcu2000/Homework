@@ -102,15 +102,21 @@ class HomeworkCaptureViewModel: ObservableObject {
 
     /// Saves the current homework item with extracted text to Core Data.
     ///
-    /// This method creates a new Item entity with the current timestamp and
-    /// saves it to the persistent store.
+    /// This method creates a new Item entity with the current timestamp,
+    /// extracted text, and image data, then saves it to the persistent store.
     ///
     /// - Parameter context: The NSManagedObjectContext to use for saving
     func saveHomework(context: NSManagedObjectContext) {
         withAnimation {
             let newItem = Item(context: context)
             newItem.timestamp = Date()
-            // TODO: Add extracted text and image data to the item once model is updated
+            newItem.extractedText = extractedText
+
+            // Convert UIImage to JPEG data for storage
+            if let image = selectedImage,
+               let imageData = image.jpegData(compressionQuality: 0.8) {
+                newItem.imageData = imageData
+            }
 
             do {
                 try context.save()

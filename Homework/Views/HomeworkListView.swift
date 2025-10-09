@@ -264,7 +264,7 @@ struct HomeworkDetailView: View {
     }
 }
 
-/// Custom tab button for inline tab bar
+/// Custom tab button for inline tab bar with liquid glass style
 private struct TabButton: View {
     let title: String
     let icon: String
@@ -275,17 +275,55 @@ private struct TabButton: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 20))
+                    .font(.system(size: 20, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
                 Text(title)
                     .font(.caption)
+                    .fontWeight(.medium)
             }
-            .foregroundColor(isSelected ? .blue : .secondary)
+            .foregroundStyle(isSelected ? .primary : .secondary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background(isSelected ? Color.blue.opacity(0.1) : Color.clear)
-            .cornerRadius(8)
+            .padding(.vertical, 10)
+            .background {
+                if isSelected {
+                    ZStack {
+                        // Liquid glass background
+                        RoundedRectangle(cornerRadius: 30, style: .continuous)
+                            .fill(.ultraThinMaterial)
+
+                        // Subtle gradient overlay
+                        RoundedRectangle(cornerRadius: 30, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.2),
+                                        Color.white.opacity(0.05)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+
+                        // Border
+                        RoundedRectangle(cornerRadius: 30, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.3),
+                                        Color.white.opacity(0.1)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.5
+                            )
+                    }
+                    .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                }
+            }
         }
         .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
     }
 }
 

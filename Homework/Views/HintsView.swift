@@ -54,7 +54,7 @@ struct HintsView: View {
                         .font(.headline)
                         .foregroundColor(.secondary)
 
-                    ExerciseCard(exercise: exercise)
+                    ExerciseInfoCard(exercise: exercise)
                 }
                 .padding(.horizontal)
 
@@ -154,8 +154,8 @@ struct HintsView: View {
 
 // MARK: - Supporting Views
 
-/// Card displaying the exercise
-private struct ExerciseCard: View {
+/// Card displaying the exercise information
+private struct ExerciseInfoCard: View {
     let exercise: AIAnalysisService.Exercise
 
     var body: some View {

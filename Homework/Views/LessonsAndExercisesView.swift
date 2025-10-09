@@ -103,7 +103,7 @@ private struct SummaryCard: View {
 }
 
 /// Card displaying a lesson
-private struct LessonCard: View {
+struct LessonCard: View {
     let lesson: AIAnalysisService.Lesson
     let index: Int
 
@@ -139,7 +139,7 @@ private struct LessonCard: View {
 }
 
 /// Card displaying an exercise
-private struct ExerciseCard: View {
+struct ExerciseCard: View {
     let exercise: AIAnalysisService.Exercise
     let homeworkItem: Item
     @State private var showSimilarExercises = false

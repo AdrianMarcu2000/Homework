@@ -151,109 +151,155 @@ struct HomeworkRowView: View {
 /// A detail view for displaying a single homework item's information.
 struct HomeworkDetailView: View {
     let item: Item
+    @State private var selectedTab = 0
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Header with timestamp
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Homework Details")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                            Text(item.timestamp!, formatter: itemFormatter)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with timestamp and tabs
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Homework Details")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        Text(item.timestamp!, formatter: itemFormatter)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal)
-
-                    // Side-by-side layout for iPad/large screens, stacked for iPhone
-                    if geometry.size.width > 600 {
-                        // Horizontal layout for larger screens
-                        HStack(alignment: .top, spacing: 20) {
-                            // Image on the left
-                            if let imageData = item.imageData,
-                               let uiImage = UIImage(data: imageData) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxWidth: geometry.size.width * 0.45)
-                                    .cornerRadius(12)
-                                    .shadow(radius: 5)
-                            }
-
-                            // Analysis content on the right
-                            VStack(alignment: .leading, spacing: 16) {
-                                if let analysis = item.analysisResult {
-                                    LessonsAndExercisesView(analysis: analysis, homeworkItem: item)
-                                } else if let text = item.extractedText, !text.isEmpty {
-                                    // Fallback to raw text if no analysis
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("Extracted Text")
-                                            .font(.headline)
-                                            .foregroundColor(.secondary)
-
-                                        ScrollView {
-                                            Text(text)
-                                                .font(.body)
-                                                .textSelection(.enabled)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                        }
-                                        .padding()
-                                        .frame(maxHeight: 500)
-                                        .background(Color.secondary.opacity(0.1))
-                                        .cornerRadius(8)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
-                    } else {
-                        // Vertical layout for smaller screens
-                        VStack(alignment: .leading, spacing: 20) {
-                            // Display the scanned image
-                            if let imageData = item.imageData,
-                               let uiImage = UIImage(data: imageData) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .cornerRadius(12)
-                                    .shadow(radius: 5)
-                                    .padding(.horizontal)
-                            }
-
-                            // Display lessons and exercises or fallback to text
-                            if let analysis = item.analysisResult {
-                                LessonsAndExercisesView(analysis: analysis, homeworkItem: item)
-                                    .padding(.horizontal)
-                            } else if let text = item.extractedText, !text.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Extracted Text")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-
-                                    Text(text)
-                                        .font(.body)
-                                        .textSelection(.enabled)
-                                        .padding()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .background(Color.secondary.opacity(0.1))
-                                        .cornerRadius(8)
-                                }
-                                .padding(.horizontal)
-                            }
-                        }
-                    }
-
                     Spacer()
                 }
-                .padding(.vertical)
+
+                // Custom tab buttons
+                HStack(spacing: 0) {
+                    TabButton(title: "Image", icon: "photo", isSelected: selectedTab == 0) {
+                        selectedTab = 0
+                    }
+                    TabButton(title: "Lessons", icon: "book.fill", isSelected: selectedTab == 1) {
+                        selectedTab = 1
+                    }
+                    TabButton(title: "Exercises", icon: "pencil.circle.fill", isSelected: selectedTab == 2) {
+                        selectedTab = 2
+                    }
+                }
             }
+            .padding()
+            .background(Color(UIColor.systemBackground))
+
+            // Tab content
+            TabView(selection: $selectedTab) {
+                        // Image Tab
+                        Group {
+                            if let imageData = item.imageData,
+                               let uiImage = UIImage(data: imageData) {
+                                ScrollView {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .cornerRadius(12)
+                                        .shadow(radius: 5)
+                                        .padding()
+                                }
+                            } else {
+                                VStack(spacing: 16) {
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(.secondary)
+                                    Text("No Image")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .tag(0)
+
+                        // Lessons Tab
+                        Group {
+                            if let analysis = item.analysisResult, !analysis.lessons.isEmpty {
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 20) {
+                                        Text("📚 Lessons")
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                            .padding(.horizontal)
+
+                                        ForEach(Array(analysis.lessons.enumerated()), id: \.offset) { index, lesson in
+                                            LessonCard(lesson: lesson, index: index + 1)
+                                                .padding(.horizontal)
+                                        }
+                                    }
+                                    .padding(.vertical)
+                                }
+                            } else {
+                                VStack(spacing: 16) {
+                                    Image(systemName: "book.fill")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(.secondary)
+                                    Text("No Lessons")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .tag(1)
+
+                        // Exercises Tab
+                        Group {
+                            if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 20) {
+                                        Text("✏️ Exercises")
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                            .padding(.horizontal)
+
+                                        ForEach(Array(analysis.exercises.enumerated()), id: \.offset) { index, exercise in
+                                            ExerciseCard(exercise: exercise, homeworkItem: item)
+                                                .padding(.horizontal)
+                                        }
+                                    }
+                                    .padding(.vertical)
+                                }
+                            } else {
+                                VStack(spacing: 16) {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(.secondary)
+                                    Text("No Exercises")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .tag(2)
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
         }
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Custom tab button for inline tab bar
+private struct TabButton: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                Text(title)
+                    .font(.caption)
+            }
+            .foregroundColor(isSelected ? .blue : .secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(isSelected ? Color.blue.opacity(0.1) : Color.clear)
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
     }
 }
 

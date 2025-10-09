@@ -125,12 +125,16 @@ struct CanvasRepresentable: UIViewRepresentable {
         }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-            // Save the drawing data
+            // Save the drawing data asynchronously to avoid modifying state during view update
             let drawing = canvasView.drawing
-            parent.canvasData = drawing.dataRepresentation()
+            let drawingData = drawing.dataRepresentation()
 
-            // Save to Core Data
-            parent.saveDrawing(data: parent.canvasData)
+            DispatchQueue.main.async {
+                self.parent.canvasData = drawingData
+
+                // Save to Core Data
+                self.parent.saveDrawing(data: drawingData)
+            }
         }
     }
 

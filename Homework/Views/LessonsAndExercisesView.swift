@@ -139,6 +139,8 @@ private struct LessonCard: View {
 /// Card displaying an exercise
 private struct ExerciseCard: View {
     let exercise: AIAnalysisService.Exercise
+    @State private var showSimilarExercises = false
+    @State private var showHints = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -173,6 +175,53 @@ private struct ExerciseCard: View {
                 .font(.body)
                 .textSelection(.enabled)
                 .foregroundColor(.primary)
+
+            // Action buttons
+            HStack(spacing: 8) {
+                // Hints button
+                Button(action: { showHints = true }) {
+                    HStack {
+                        Image(systemName: "lightbulb.fill")
+                        Text("Hints")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.yellow, Color.orange],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+
+                // Practice button
+                Button(action: { showSimilarExercises = true }) {
+                    HStack {
+                        Image(systemName: "sparkles")
+                        Text("Practice")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.green, Color.green.opacity(0.8)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding()
         .background(Color.green.opacity(0.05))
@@ -181,6 +230,12 @@ private struct ExerciseCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.green.opacity(0.3), lineWidth: 1)
         )
+        .sheet(isPresented: $showSimilarExercises) {
+            SimilarExercisesView(originalExercise: exercise)
+        }
+        .sheet(isPresented: $showHints) {
+            HintsView(exercise: exercise)
+        }
     }
 }
 

@@ -53,6 +53,31 @@ class AIAnalysisService {
         let exercises: [Exercise]
     }
 
+    /// Generated similar exercise
+    struct SimilarExercise: Codable, Identifiable {
+        var id: UUID { UUID() }
+        let exerciseNumber: String
+        let type: String
+        let content: String
+        let difficulty: String // same, easier, harder
+
+        enum CodingKeys: String, CodingKey {
+            case exerciseNumber, type, content, difficulty
+        }
+    }
+
+    /// Progressive hint for an exercise
+    struct Hint: Codable, Identifiable {
+        var id: UUID { UUID() }
+        let level: Int // 1, 2, or 3
+        let title: String
+        let content: String
+
+        enum CodingKeys: String, CodingKey {
+            case level, title, content
+        }
+    }
+
     /// Analyzes a homework image to identify lessons and exercises
     ///
     /// - Parameters:
@@ -140,6 +165,9 @@ class AIAnalysisService {
         - Ensure endY > startY for each item
         - Do not overlap content boundaries
         - Include ALL relevant text in fullContent
+        - CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
+        - Use plain text for math: write "x^2" not "x squared in LaTeX", write "x * y" or "x times y" not "x cdot y", write "(a+b)^2" not LaTeX notation.
+        - Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.
         """
 
         // Use Apple Intelligence to analyze the image with the prompt
@@ -147,38 +175,306 @@ class AIAnalysisService {
             switch result {
             case .success(let responseText):
                 do {
+                    print("=== HOMEWORK ANALYSIS ===")
+                    print("Full AI Response:")
+                    print(responseText)
+                    print("========================")
+
                     // Extract JSON from the response (in case there's extra text)
                     let jsonString = self.extractJSON(from: responseText)
 
+                    print("Extracted JSON:")
+                    print(jsonString)
+                    print("========================")
+
                     // Parse the JSON response
                     guard let data = jsonString.data(using: .utf8) else {
+                        print("ERROR: Failed to convert JSON string to data")
                         completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert JSON string to data"]))))
                         return
                     }
 
                     let decoder = JSONDecoder()
                     let analysisResult = try decoder.decode(AnalysisResult.self, from: data)
+                    print("SUCCESS: Parsed analysis result")
+                    print("Lessons: \(analysisResult.lessons.count)")
+                    print("Exercises: \(analysisResult.exercises.count)")
+                    print("========================")
                     completion(.success(analysisResult))
                 } catch {
+                    print("ERROR: Parsing failed")
+                    print("Error details: \(error)")
+                    if let decodingError = error as? DecodingError {
+                        switch decodingError {
+                        case .dataCorrupted(let context):
+                            print("Data corrupted: \(context)")
+                        case .keyNotFound(let key, let context):
+                            print("Key '\(key)' not found: \(context.debugDescription)")
+                        case .typeMismatch(let type, let context):
+                            print("Type '\(type)' mismatch: \(context.debugDescription)")
+                        case .valueNotFound(let type, let context):
+                            print("Value '\(type)' not found: \(context.debugDescription)")
+                        @unknown default:
+                            print("Unknown decoding error")
+                        }
+                    }
+                    print("========================")
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }
             case .failure(let error):
+                print("ERROR: AI request failed")
+                print("Error: \(error.localizedDescription)")
+                print("========================")
                 completion(.failure(error))
+            }
+        }
+    }
+
+    /// Generates similar test exercises based on an existing exercise
+    ///
+    /// - Parameters:
+    ///   - exercise: The original exercise to base similar exercises on
+    ///   - count: Number of similar exercises to generate (default: 3)
+    ///   - completion: Callback with array of generated exercises
+    func generateSimilarExercises(
+        basedOn exercise: Exercise,
+        count: Int = 3,
+        completion: @escaping (Result<[SimilarExercise], Error>) -> Void
+    ) {
+        guard isModelAvailable else {
+            completion(.failure(AIAnalysisError.analysisUnavailable))
+            return
+        }
+
+        let prompt = """
+        You are an educational exercise generator. Generate \(count) similar practice exercises based on the following exercise.
+
+        Original Exercise:
+        Type: \(exercise.type)
+        Content: \(exercise.fullContent)
+
+        Generate \(count) similar exercises with varying difficulty levels (same, easier, harder).
+
+        IMPORTANT:
+        - Return ONLY valid JSON. Do not include any explanatory text before or after the JSON.
+        - CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
+        - Use plain text for math: write "x^2" not "x squared in LaTeX", write "x * y" or "x times y" not "x cdot y", write "(a+b)^2" not LaTeX notation.
+        - Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.
+
+        Return a JSON array with this exact structure:
+        [
+            {
+                "exerciseNumber": "1",
+                "type": "\(exercise.type)",
+                "content": "The exercise text here",
+                "difficulty": "same"
+            },
+            {
+                "exerciseNumber": "2",
+                "type": "\(exercise.type)",
+                "content": "The exercise text here",
+                "difficulty": "easier"
+            },
+            {
+                "exerciseNumber": "3",
+                "type": "\(exercise.type)",
+                "content": "The exercise text here",
+                "difficulty": "harder"
+            }
+        ]
+
+        Guidelines:
+        - Keep the same exercise type and educational level
+        - Vary the numbers, variables, or context but maintain the same concept
+        - "same" difficulty: Similar complexity to original
+        - "easier": Simpler numbers or fewer steps
+        - "harder": More complex numbers or additional steps
+        - Ensure exercises are educational and appropriate for students
+        """
+
+        Task {
+            do {
+                let response = try await session.respond(to: prompt)
+
+                print("=== SIMILAR EXERCISES ===")
+                print("Full AI Response:")
+                print(response.content)
+                print("========================")
+
+                let jsonString = extractJSON(from: response.content)
+
+                print("Extracted JSON:")
+                print(jsonString)
+                print("========================")
+
+                guard let data = jsonString.data(using: .utf8) else {
+                    print("ERROR: Failed to convert JSON string to data")
+                    print("========================")
+                    await MainActor.run {
+                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1))))
+                    }
+                    return
+                }
+
+                let decoder = JSONDecoder()
+                let exercises = try decoder.decode([SimilarExercise].self, from: data)
+
+                print("SUCCESS: Parsed \(exercises.count) similar exercises")
+                print("========================")
+
+                await MainActor.run {
+                    completion(.success(exercises))
+                }
+            } catch {
+                print("ERROR: Parsing similar exercises failed")
+                print("Error details: \(error)")
+                print("========================")
+                await MainActor.run {
+                    completion(.failure(AIAnalysisError.parsingFailed(error)))
+                }
+            }
+        }
+    }
+
+    /// Generates progressive hints for an exercise
+    ///
+    /// - Parameters:
+    ///   - exercise: The exercise to generate hints for
+    ///   - completion: Callback with array of 3 progressive hints
+    func generateHints(
+        for exercise: Exercise,
+        completion: @escaping (Result<[Hint], Error>) -> Void
+    ) {
+        guard isModelAvailable else {
+            completion(.failure(AIAnalysisError.analysisUnavailable))
+            return
+        }
+
+        let prompt = """
+        You are an educational tutor providing progressive hints to help students solve exercises.
+
+        Exercise:
+        Type: \(exercise.type)
+        Content: \(exercise.fullContent)
+
+        Generate exactly 3 progressive hints to help students solve this exercise. Each hint should reveal more information:
+
+        Level 1: Basic hint - Point the student in the right direction without giving away the method
+        Level 2: Method hint - Explain the approach or formula needed, but don't solve it
+        Level 3: Detailed hint - Guide through the steps, getting very close to the solution but NOT giving the final answer
+
+        IMPORTANT:
+        - Return ONLY valid JSON. Do not include any explanatory text before or after the JSON.
+        - CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
+        - Use plain text for math: write "x^2" not "x squared in LaTeX", write "x * y" or "x times y" not "x cdot y", write "(a+b)^2" not LaTeX notation.
+        - Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.
+
+        Return a JSON array with this exact structure:
+        [
+            {
+                "level": 1,
+                "title": "Think About...",
+                "content": "A gentle nudge in the right direction"
+            },
+            {
+                "level": 2,
+                "title": "Method to Use",
+                "content": "Explain the approach or formula needed"
+            },
+            {
+                "level": 3,
+                "title": "Step-by-Step Guide",
+                "content": "Walk through the process without giving the final answer"
+            }
+        ]
+
+        Guidelines:
+        - Be encouraging and supportive in tone
+        - Each hint should be progressively more detailed
+        - Never give away the final answer directly
+        - Use clear, student-friendly language
+        - Tailor the complexity to the exercise type
+        """
+
+        Task {
+            do {
+                let response = try await session.respond(to: prompt)
+
+                print("=== HINTS GENERATION ===")
+                print("Full AI Response:")
+                print(response.content)
+                print("========================")
+
+                let jsonString = extractJSON(from: response.content)
+
+                print("Extracted JSON:")
+                print(jsonString)
+                print("========================")
+
+                guard let data = jsonString.data(using: .utf8) else {
+                    print("ERROR: Failed to convert JSON string to data")
+                    print("========================")
+                    await MainActor.run {
+                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1))))
+                    }
+                    return
+                }
+
+                let decoder = JSONDecoder()
+                let hints = try decoder.decode([Hint].self, from: data)
+
+                print("SUCCESS: Parsed \(hints.count) hints")
+                print("========================")
+
+                await MainActor.run {
+                    completion(.success(hints))
+                }
+            } catch {
+                print("ERROR: Parsing hints failed")
+                print("Error details: \(error)")
+                print("========================")
+                await MainActor.run {
+                    completion(.failure(AIAnalysisError.parsingFailed(error)))
+                }
             }
         }
     }
 
     /// Extracts JSON from a response that might contain additional text
     private func extractJSON(from text: String) -> String {
-        // Try to find JSON object boundaries
-        if let startIndex = text.firstIndex(of: "{"),
-           let endIndex = text.lastIndex(of: "}") {
+        var jsonString = text
+
+        // Try to find JSON array boundaries first
+        if let startIndex = text.firstIndex(of: "["),
+           let endIndex = text.lastIndex(of: "]") {
             let jsonRange = startIndex...endIndex
-            return String(text[jsonRange])
+            jsonString = String(text[jsonRange])
+        }
+        // Try to find JSON object boundaries
+        else if let startIndex = text.firstIndex(of: "{"),
+                let endIndex = text.lastIndex(of: "}") {
+            let jsonRange = startIndex...endIndex
+            jsonString = String(text[jsonRange])
         }
 
-        // If no JSON markers found, return the original text
-        return text
+        // Fix LaTeX math notation and other backslash issues in JSON
+        // Replace single backslashes with double backslashes for proper JSON escaping
+        jsonString = jsonString.replacingOccurrences(of: "\\(", with: "\\\\(")
+        jsonString = jsonString.replacingOccurrences(of: "\\)", with: "\\\\)")
+        jsonString = jsonString.replacingOccurrences(of: "\\[", with: "\\\\[")
+        jsonString = jsonString.replacingOccurrences(of: "\\]", with: "\\\\]")
+        jsonString = jsonString.replacingOccurrences(of: "\\times", with: "\\\\times")
+        jsonString = jsonString.replacingOccurrences(of: "\\cdot", with: "\\\\cdot")
+        jsonString = jsonString.replacingOccurrences(of: "\\frac", with: "\\\\frac")
+        jsonString = jsonString.replacingOccurrences(of: "\\sqrt", with: "\\\\sqrt")
+        jsonString = jsonString.replacingOccurrences(of: "\\div", with: "\\\\div")
+        jsonString = jsonString.replacingOccurrences(of: "\\pm", with: "\\\\pm")
+        jsonString = jsonString.replacingOccurrences(of: "\\leq", with: "\\\\leq")
+        jsonString = jsonString.replacingOccurrences(of: "\\geq", with: "\\\\geq")
+        jsonString = jsonString.replacingOccurrences(of: "\\neq", with: "\\\\neq")
+        jsonString = jsonString.replacingOccurrences(of: "\\approx", with: "\\\\approx")
+
+        return jsonString
     }
 
     /// Performs AI analysis using Apple Intelligence Foundation Models

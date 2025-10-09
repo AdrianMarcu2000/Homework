@@ -155,34 +155,21 @@ struct HomeworkDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header with timestamp and tabs
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Homework Details")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        Text(item.timestamp!, formatter: itemFormatter)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
+            // Custom tab buttons
+            HStack(spacing: 0) {
+                TabButton(title: "Image", icon: "photo", isSelected: selectedTab == 0) {
+                    selectedTab = 0
                 }
-
-                // Custom tab buttons
-                HStack(spacing: 0) {
-                    TabButton(title: "Image", icon: "photo", isSelected: selectedTab == 0) {
-                        selectedTab = 0
-                    }
-                    TabButton(title: "Lessons", icon: "book.fill", isSelected: selectedTab == 1) {
-                        selectedTab = 1
-                    }
-                    TabButton(title: "Exercises", icon: "pencil.circle.fill", isSelected: selectedTab == 2) {
-                        selectedTab = 2
-                    }
+                TabButton(title: "Lessons", icon: "book.fill", isSelected: selectedTab == 1) {
+                    selectedTab = 1
+                }
+                TabButton(title: "Exercises", icon: "pencil.circle.fill", isSelected: selectedTab == 2) {
+                    selectedTab = 2
                 }
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
             .background(Color(UIColor.systemBackground))
 
             // Tab content
@@ -274,7 +261,20 @@ struct HomeworkDetailView: View {
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
         }
+        .navigationTitle("Homework Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 2) {
+                    Text("Homework Details")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    Text(item.timestamp!, formatter: itemFormatter)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
     }
 }
 

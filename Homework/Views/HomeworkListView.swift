@@ -188,7 +188,7 @@ struct HomeworkDetailView: View {
                             // Analysis content on the right
                             VStack(alignment: .leading, spacing: 16) {
                                 if let analysis = item.analysisResult {
-                                    LessonsAndExercisesView(analysis: analysis)
+                                    LessonsAndExercisesView(analysis: analysis, homeworkItem: item)
                                 } else if let text = item.extractedText, !text.isEmpty {
                                     // Fallback to raw text if no analysis
                                     VStack(alignment: .leading, spacing: 8) {
@@ -227,7 +227,7 @@ struct HomeworkDetailView: View {
 
                             // Display lessons and exercises or fallback to text
                             if let analysis = item.analysisResult {
-                                LessonsAndExercisesView(analysis: analysis)
+                                LessonsAndExercisesView(analysis: analysis, homeworkItem: item)
                                     .padding(.horizontal)
                             } else if let text = item.extractedText, !text.isEmpty {
                                 VStack(alignment: .leading, spacing: 8) {

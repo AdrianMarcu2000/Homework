@@ -6,10 +6,12 @@
 //
 
 import SwiftUI
+import CoreData
 
 /// A view that displays analyzed lessons and exercises from homework
 struct LessonsAndExercisesView: View {
     let analysis: AIAnalysisService.AnalysisResult
+    let homeworkItem: Item
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -50,7 +52,7 @@ struct LessonsAndExercisesView: View {
                         .fontWeight(.bold)
 
                     ForEach(Array(analysis.exercises.enumerated()), id: \.offset) { index, exercise in
-                        ExerciseCard(exercise: exercise)
+                        ExerciseCard(exercise: exercise, homeworkItem: homeworkItem)
                     }
                 }
             }
@@ -139,8 +141,17 @@ private struct LessonCard: View {
 /// Card displaying an exercise
 private struct ExerciseCard: View {
     let exercise: AIAnalysisService.Exercise
+    let homeworkItem: Item
     @State private var showSimilarExercises = false
     @State private var showHints = false
+    @State private var canvasData: Data?
+
+    init(exercise: AIAnalysisService.Exercise, homeworkItem: Item) {
+        self.exercise = exercise
+        self.homeworkItem = homeworkItem
+        let key = "\(exercise.exerciseNumber)_\(exercise.startY)"
+        _canvasData = State(initialValue: homeworkItem.exerciseAnswers?[key])
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -222,6 +233,16 @@ private struct ExerciseCard: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            // Drawing canvas for answer
+            Divider()
+                .padding(.vertical, 4)
+
+            DrawingCanvasView(
+                exercise: exercise,
+                homeworkItem: homeworkItem,
+                canvasData: $canvasData
+            )
         }
         .padding()
         .background(Color.green.opacity(0.05))
@@ -269,8 +290,15 @@ private struct ExerciseCard: View {
         ]
     )
 
-    ScrollView {
-        LessonsAndExercisesView(analysis: mockAnalysis)
+    let mockItem: Item = {
+        let context = PersistenceController.preview.container.viewContext
+        let item = Item(context: context)
+        item.timestamp = Date()
+        return item
+    }()
+
+    return ScrollView {
+        LessonsAndExercisesView(analysis: mockAnalysis, homeworkItem: mockItem)
             .padding()
     }
 }

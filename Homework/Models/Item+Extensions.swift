@@ -35,4 +35,22 @@ extension Item {
             return nil
         }
     }
+
+    /// Computed property to store exercise answers (drawings)
+    var exerciseAnswers: [String: Data]? {
+        get {
+            guard let data = value(forKey: "exerciseAnswersData") as? Data else {
+                return nil
+            }
+            return try? JSONDecoder().decode([String: Data].self, from: data)
+        }
+        set {
+            if let newValue = newValue,
+               let data = try? JSONEncoder().encode(newValue) {
+                setValue(data, forKey: "exerciseAnswersData")
+            } else {
+                setValue(nil, forKey: "exerciseAnswersData")
+            }
+        }
+    }
 }

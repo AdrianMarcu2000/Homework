@@ -175,56 +175,22 @@ class AIAnalysisService {
             switch result {
             case .success(let responseText):
                 do {
-                    print("=== HOMEWORK ANALYSIS ===")
-                    print("Full AI Response:")
-                    print(responseText)
-                    print("========================")
-
                     // Extract JSON from the response (in case there's extra text)
                     let jsonString = self.extractJSON(from: responseText)
 
-                    print("Extracted JSON:")
-                    print(jsonString)
-                    print("========================")
-
                     // Parse the JSON response
                     guard let data = jsonString.data(using: .utf8) else {
-                        print("ERROR: Failed to convert JSON string to data")
                         completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert JSON string to data"]))))
                         return
                     }
 
                     let decoder = JSONDecoder()
                     let analysisResult = try decoder.decode(AnalysisResult.self, from: data)
-                    print("SUCCESS: Parsed analysis result")
-                    print("Lessons: \(analysisResult.lessons.count)")
-                    print("Exercises: \(analysisResult.exercises.count)")
-                    print("========================")
                     completion(.success(analysisResult))
                 } catch {
-                    print("ERROR: Parsing failed")
-                    print("Error details: \(error)")
-                    if let decodingError = error as? DecodingError {
-                        switch decodingError {
-                        case .dataCorrupted(let context):
-                            print("Data corrupted: \(context)")
-                        case .keyNotFound(let key, let context):
-                            print("Key '\(key)' not found: \(context.debugDescription)")
-                        case .typeMismatch(let type, let context):
-                            print("Type '\(type)' mismatch: \(context.debugDescription)")
-                        case .valueNotFound(let type, let context):
-                            print("Value '\(type)' not found: \(context.debugDescription)")
-                        @unknown default:
-                            print("Unknown decoding error")
-                        }
-                    }
-                    print("========================")
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }
             case .failure(let error):
-                print("ERROR: AI request failed")
-                print("Error: \(error.localizedDescription)")
-                print("========================")
                 completion(.failure(error))
             }
         }

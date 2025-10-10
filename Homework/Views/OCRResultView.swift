@@ -73,7 +73,7 @@ struct OCRResultView: View {
                         }
 
                         Button("Save", action: onSave)
-                            .disabled(extractedText.isEmpty || isCloudAnalysisInProgress)
+                            .disabled(isProcessing || extractedText.isEmpty || isCloudAnalysisInProgress)
                     }
                 }
             }

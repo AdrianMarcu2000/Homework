@@ -74,7 +74,14 @@ struct HomeworkListView: View {
     /// - Parameter offsets: The index set of items to delete from the list
     private func deleteItems(offsets: IndexSet) {
         withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
+            let itemsToDelete = offsets.map { items[$0] }
+
+            // Check if currently selected item is being deleted
+            if let selected = selectedItem, itemsToDelete.contains(selected) {
+                selectedItem = nil
+            }
+
+            itemsToDelete.forEach(viewContext.delete)
 
             do {
                 try viewContext.save()

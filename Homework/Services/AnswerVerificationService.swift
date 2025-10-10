@@ -11,11 +11,26 @@ import FirebaseAppCheck
 import PencilKit
 
 /// Result of answer verification from cloud
-struct VerificationResult: Codable, Sendable {
+struct VerificationResult: Sendable {
     let isCorrect: Bool
     let confidence: String // "high", "medium", "low"
     let feedback: String
     let suggestions: String?
+}
+
+// Explicitly implement Codable outside of MainActor context
+extension VerificationResult: Codable {
+    enum CodingKeys: String, CodingKey {
+        case isCorrect, confidence, feedback, suggestions
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.isCorrect = try container.decode(Bool.self, forKey: .isCorrect)
+        self.confidence = try container.decode(String.self, forKey: .confidence)
+        self.feedback = try container.decode(String.self, forKey: .feedback)
+        self.suggestions = try container.decodeIfPresent(String.self, forKey: .suggestions)
+    }
 }
 
 /// Request structure for answer verification

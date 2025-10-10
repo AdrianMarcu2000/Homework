@@ -38,7 +38,7 @@ class CloudAnalysisService {
         let sections: [Section]
 
         struct Section: Codable {
-            let type: String // "EXERCISE" or "LESSON"
+            let type: String // "EXERCISE" or "SKIP"
             let title: String
             let content: String
             let yStart: Int
@@ -125,7 +125,7 @@ class CloudAnalysisService {
 
                 // Convert to our format
                 let analysisResult = self.convertToAnalysisResult(cloudResult)
-                print("DEBUG CLOUD: Converted to - Lessons: \(analysisResult.lessons.count), Exercises: \(analysisResult.exercises.count)")
+                print("DEBUG CLOUD: Converted to - Exercises: \(analysisResult.exercises.count)")
 
                 completion(.success(analysisResult))
             } catch {
@@ -154,7 +154,6 @@ class CloudAnalysisService {
 
     /// Converts cloud response to our internal format
     private func convertToAnalysisResult(_ cloudResult: CloudAnalysisResult) -> AIAnalysisService.AnalysisResult {
-        var lessons: [AIAnalysisService.Lesson] = []
         var exercises: [AIAnalysisService.Exercise] = []
 
         for section in cloudResult.sections {
@@ -162,18 +161,7 @@ class CloudAnalysisService {
             let startY = Double(section.yStart) / 1000.0
             let endY = Double(section.yEnd) / 1000.0
 
-            switch section.type {
-            case "LESSON":
-                let lesson = AIAnalysisService.Lesson(
-                    topic: section.title,
-                    fullContent: section.content,
-                    startY: startY,
-                    endY: endY
-                )
-                lessons.append(lesson)
-                print("DEBUG CLOUD: Converted lesson - \(section.title)")
-
-            case "EXERCISE":
+            if section.type == "EXERCISE" {
                 // Extract exercise number from title (e.g., "Exercise 8" -> "8")
                 let exerciseNumber = extractExerciseNumber(from: section.title)
                 let exercise = AIAnalysisService.Exercise(
@@ -185,15 +173,13 @@ class CloudAnalysisService {
                 )
                 exercises.append(exercise)
                 print("DEBUG CLOUD: Converted exercise #\(exerciseNumber)")
-
-            default:
-                print("DEBUG CLOUD: Unknown section type: \(section.type)")
+            } else {
+                print("DEBUG CLOUD: Skipping section type: \(section.type)")
             }
         }
 
         // Sort by Y position (descending for top-to-bottom order)
         return AIAnalysisService.AnalysisResult(
-            lessons: lessons.sorted { $0.startY > $1.startY },
             exercises: exercises.sorted { $0.startY > $1.startY }
         )
     }

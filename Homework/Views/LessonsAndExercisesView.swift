@@ -8,7 +8,7 @@
 import SwiftUI
 import CoreData
 
-/// A view that displays analyzed lessons and exercises from homework
+/// A view that displays analyzed exercises from homework
 struct LessonsAndExercisesView: View {
     let analysis: AIAnalysisService.AnalysisResult
     let homeworkItem: Item
@@ -16,33 +16,12 @@ struct LessonsAndExercisesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Summary
-            HStack(spacing: 16) {
-                SummaryCard(
-                    icon: "book.fill",
-                    title: "Lessons",
-                    count: analysis.lessons.count,
-                    color: .blue
-                )
-                SummaryCard(
-                    icon: "pencil.circle.fill",
-                    title: "Exercises",
-                    count: analysis.exercises.count,
-                    color: .green
-                )
-            }
-
-            // Lessons Section
-            if !analysis.lessons.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("📚 Lessons")
-                        .font(.title3)
-                        .fontWeight(.bold)
-
-                    ForEach(Array(analysis.lessons.enumerated()), id: \.offset) { index, lesson in
-                        LessonCard(lesson: lesson, index: index + 1, homeworkItem: homeworkItem)
-                    }
-                }
-            }
+            SummaryCard(
+                icon: "pencil.circle.fill",
+                title: "Exercises",
+                count: analysis.exercises.count,
+                color: .green
+            )
 
             // Exercises Section
             if !analysis.exercises.isEmpty {
@@ -58,12 +37,12 @@ struct LessonsAndExercisesView: View {
             }
 
             // Empty state
-            if analysis.lessons.isEmpty && analysis.exercises.isEmpty {
+            if analysis.exercises.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.system(size: 48))
                         .foregroundColor(.secondary)
-                    Text("No lessons or exercises found")
+                    Text("No exercises found")
                         .font(.headline)
                         .foregroundColor(.secondary)
                 }
@@ -99,64 +78,6 @@ private struct SummaryCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(color.opacity(0.1))
         .cornerRadius(12)
-    }
-}
-
-/// Card displaying a lesson
-struct LessonCard: View {
-    let lesson: AIAnalysisService.Lesson
-    let index: Int
-    let homeworkItem: Item
-
-    /// Computed property to get the cropped image for this lesson
-    private var croppedLessonImage: UIImage? {
-        guard let imageData = homeworkItem.imageData,
-              let fullImage = UIImage(data: imageData) else {
-            return nil
-        }
-        return fullImage.crop(startY: lesson.startY, endY: lesson.endY, padding: 0.03)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Lesson \(index)")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.blue)
-                Spacer()
-            }
-
-            Text(lesson.topic)
-                .font(.headline)
-
-            // Cropped lesson image
-            if let croppedImage = croppedLessonImage {
-                Image(uiImage: croppedImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.white)
-                    .cornerRadius(8)
-                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.blue.opacity(0.2), lineWidth: 1)
-                    )
-            }
-
-            Text(lesson.fullContent)
-                .font(.body)
-                .textSelection(.enabled)
-                .foregroundColor(.primary)
-        }
-        .padding()
-        .background(Color.blue.opacity(0.05))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-        )
     }
 }
 
@@ -304,14 +225,6 @@ struct ExerciseCard: View {
 
 #Preview {
     let mockAnalysis = AIAnalysisService.AnalysisResult(
-        lessons: [
-            AIAnalysisService.Lesson(
-                topic: "Introduction to Algebra",
-                fullContent: "Algebra is a branch of mathematics dealing with symbols and the rules for manipulating those symbols.",
-                startY: 0.1,
-                endY: 0.25
-            )
-        ],
         exercises: [
             AIAnalysisService.Exercise(
                 exerciseNumber: "1",

@@ -30,14 +30,6 @@ class AIAnalysisService {
         let y: Double
     }
 
-    /// Represents a lesson segment
-    struct Lesson: Codable {
-        let topic: String
-        let fullContent: String
-        let startY: Double
-        let endY: Double
-    }
-
     /// Represents an exercise segment
     struct Exercise: Codable {
         let exerciseNumber: String
@@ -77,16 +69,14 @@ class AIAnalysisService {
         }
     }
 
-    /// Analysis result containing lessons and exercises
+    /// Analysis result containing exercises
     struct AnalysisResult: Codable {
-        let lessons: [Lesson]
         let exercises: [Exercise]
     }
 
     /// Result from analyzing a single segment
     private struct SegmentAnalysisResult: Codable {
-        let type: String // "lesson", "exercise", or "neither"
-        let lesson: Lesson?
+        let type: String // "exercise" or "skip"
         let exercise: Exercise?
     }
 
@@ -168,7 +158,6 @@ class AIAnalysisService {
 
         // Step 2: Analyze each segment with text-based context
         Task {
-            var allLessons: [Lesson] = []
             var allExercises: [Exercise] = []
 
             let totalSegments = mergedSegments.count
@@ -185,18 +174,16 @@ class AIAnalysisService {
 
                 let prompt = """
 INSTRUCTIONS:
-Classify the TEXT SEGMENT below as exercise, lesson, or neither. Return ONLY JSON, no explanations.
+Determine if the TEXT SEGMENT below is an exercise. Return ONLY JSON, no explanations.
 
 RULES:
-- Numbered items (1., 2., a., etc.) = EXERCISE
-- Questions or imperatives (Find, Solve, Calculate, Write, Complete) = EXERCISE
-- Theoretical explanations = LESSON
-- Pure headers/footers only = NEITHER
+- Numbered items (1., 2., a., b., etc.) = EXERCISE
+- Questions or imperatives (Find, Solve, Calculate, Write, Complete, Expand) = EXERCISE
+- Pure headers/footers/titles without questions = SKIP
 
 RESPONSE FORMAT (choose one):
 Exercise: {"type":"exercise","exercise":{"exerciseNumber":"NUM","type":"TYPE","fullContent":"TEXT","startY":\(segment.startY),"endY":\(segment.endY)}}
-Lesson: {"type":"lesson","lesson":{"topic":"TOPIC","fullContent":"TEXT","startY":\(segment.startY),"endY":\(segment.endY)}}
-Neither: {"type":"neither"}
+Skip: {"type":"skip"}
 
 Types: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, other
 
@@ -228,14 +215,11 @@ Return JSON only:
 
                     print("DEBUG: Segment \(index + 1) - Type: \(segmentResult.type)")
 
-                    if segmentResult.type == "lesson", let lesson = segmentResult.lesson {
-                        print("DEBUG: Found lesson - \(lesson.topic), Y: \(lesson.startY)-\(lesson.endY)")
-                        allLessons.append(lesson)
-                    } else if segmentResult.type == "exercise", let exercise = segmentResult.exercise {
+                    if segmentResult.type == "exercise", let exercise = segmentResult.exercise {
                         print("DEBUG: Found exercise #\(exercise.exerciseNumber), Y: \(exercise.startY)-\(exercise.endY)")
                         allExercises.append(exercise)
                     } else {
-                        print("DEBUG: Segment classified as 'neither' or no data")
+                        print("DEBUG: Segment skipped (not an exercise)")
                     }
                 } catch {
                     print("DEBUG: Error analyzing segment \(index + 1): \(error.localizedDescription)")
@@ -246,17 +230,15 @@ Return JSON only:
 
             // Step 3: Combine all results, sorted by Y-position (document order: top to bottom)
             // In Vision coordinates, higher Y = higher on page, so sort DESCENDING for reading order
-            let sortedLessons = allLessons.sorted { $0.startY > $1.startY }
             let sortedExercises = allExercises.sorted { $0.startY > $1.startY }
 
-            print("DEBUG: Final analysis complete - Lessons: \(allLessons.count), Exercises: \(allExercises.count)")
+            print("DEBUG: Final analysis complete - Exercises: \(allExercises.count)")
             print("DEBUG: Exercise order after sorting (top to bottom):")
             for (idx, ex) in sortedExercises.enumerated() {
                 print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
             }
 
             let finalResult = AnalysisResult(
-                lessons: sortedLessons,
                 exercises: sortedExercises
             )
 
@@ -289,55 +271,41 @@ Return JSON only:
         }.joined(separator: "\n")
 
         let prompt = """
-        You are an educational content analyzer specializing in homework page segmentation. Analyze the provided homework page to identify and categorize ALL content as either lesson/course material or exercises.
+        You are an educational content analyzer specializing in homework exercise identification. Analyze the provided homework page to identify ALL exercises.
 
         IMPORTANT: Return ONLY valid JSON. Do not include any explanatory text before or after the JSON. Your entire response must be parseable JSON.
 
         Input Data:
-        - Image: A homework page containing lessons and/or exercises
+        - Image: A homework page containing exercises
         - OCR text blocks with Y coordinates: "\(ocrBlocksList)"
 
         Core Classification Rules:
-
-        IMPORTANT HINT: If the text contains ANY questions, question marks, or asks the student to perform a task, it is almost ALWAYS an exercise, NOT a lesson.
-
-        LESSON (theoretical content only):
-        - Explanatory text, definitions, formulas, theorems, concepts
-        - Worked examples WITH complete solutions already shown
-        - Educational text that TEACHES (does NOT ask questions or request action)
-        - Must be purely informational/instructional content
-        - NO question marks or imperatives
 
         EXERCISE (tasks for students):
         - Questions, problems, or tasks that ASK the student to do something
         - Must have BOTH identifier (number/letter) AND task body
         - Problems WITHOUT solutions (blank spaces for student responses)
         - Contains question words: "Find", "Calculate", "Solve", "Show", "Prove", "Determine"
-        - Contains instruction words: "Complete", "Fill in", "Draw", "Explain"
+        - Contains instruction words: "Complete", "Fill in", "Draw", "Explain", "Expand", "Write"
         - Contains question marks (?) or imperative verbs
-        - If it asks a question or requests an action → it's an EXERCISE, not a lesson
+        - Numbered items (1., 2., a., b., etc.)
+        - When the text contains multiple paragraphs, separate the exercises
+
+        SKIP (not exercises):
+        - Pure page headers, footers, page numbers
+        - Section titles without actual questions
         - A heading alone (e.g., "Exercise 1" with no task) is NOT an exercise
-        - When the text is more than one paragraph, separate the exercises
 
-        CRITICAL: For each identified content item, determine both START and END positions:
-        - startY: Y coordinate where the content begins (from the first relevant OCR block)
-        - endY: Y coordinate where the content ends (from the last relevant OCR block)
+        CRITICAL: For each identified exercise, determine both START and END positions:
+        - startY: Y coordinate where the exercise begins (from the first relevant OCR block)
+        - endY: Y coordinate where the exercise ends (from the last relevant OCR block)
 
-        Use the OCR block Y coordinates to precisely determine where each lesson or exercise starts and ends. Look for:
+        Use the OCR block Y coordinates to precisely determine where each exercise starts and ends. Look for:
         - Natural content boundaries (blank lines, new headings, different formatting)
         - Sequential exercise numbering to determine where one exercise ends and another begins
-        - Topic changes that indicate lesson boundaries
 
         Return a JSON object with this exact structure:
         {
-            "lessons": [
-                {
-                    "topic": "Brief topic description",
-                    "fullContent": "Your cleaned-up and properly formatted understanding of the lesson content, with corrected OCR errors and proper mathematical notation",
-                    "startY": 0.123,
-                    "endY": 0.245
-                }
-            ],
             "exercises": [
                 {
                     "exerciseNumber": "1",
@@ -385,7 +353,6 @@ Return JSON only:
                     // Sort by Y-position to maintain document order (top to bottom)
                     // In Vision coordinates, higher Y = higher on page, so sort DESCENDING
                     analysisResult = AnalysisResult(
-                        lessons: analysisResult.lessons.sorted { $0.startY > $1.startY },
                         exercises: analysisResult.exercises.sorted { $0.startY > $1.startY }
                     )
 
@@ -494,7 +461,7 @@ Return JSON only:
     /// Generates a concise summary of the homework analysis
     ///
     /// - Parameters:
-    ///   - analysisResult: The analysis result containing lessons and exercises
+    ///   - analysisResult: The analysis result containing exercises
     ///   - completion: Callback with the summary text
     func generateHomeworkSummary(
         for analysisResult: AnalysisResult,
@@ -506,17 +473,13 @@ Return JSON only:
         }
 
         // Build a description of the content
-        let lessonsDesc = analysisResult.lessons.map { "- \($0.topic)" }.joined(separator: "\n")
         let exercisesDesc = analysisResult.exercises.map { "- Exercise \($0.exerciseNumber): \($0.type)" }.joined(separator: "\n")
 
         let prompt = """
 INSTRUCTIONS:
-Generate a brief, student-friendly summary (2-3 sentences) of this homework page.
+Generate a brief, student-friendly summary (1-2 sentences) of this homework page.
 
 CONTENT FOUND:
-Lessons (\(analysisResult.lessons.count)):
-\(lessonsDesc.isEmpty ? "None" : lessonsDesc)
-
 Exercises (\(analysisResult.exercises.count)):
 \(exercisesDesc.isEmpty ? "None" : exercisesDesc)
 

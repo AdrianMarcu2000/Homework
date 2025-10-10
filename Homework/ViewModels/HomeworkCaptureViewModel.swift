@@ -148,7 +148,7 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                 switch result {
                 case .success(let analysis):
-                    print("DEBUG VM: Received analysis - Lessons: \(analysis.lessons.count), Exercises: \(analysis.exercises.count)")
+                    print("DEBUG VM: Received analysis - Exercises: \(analysis.exercises.count)")
                     self.analysisResult = analysis
 
                     // Generate a summary of the homework instead of showing raw OCR text
@@ -164,7 +164,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                             case .failure(let error):
                                 print("DEBUG VM: Summary generation failed - \(error.localizedDescription)")
                                 // Fallback to a basic summary
-                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) and \(analysis.lessons.count) lesson(s) in this homework."
+                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
                             }
                         }
                     }
@@ -199,7 +199,7 @@ class HomeworkCaptureViewModel: ObservableObject {
 
             // Save AI analysis result as JSON
             if let analysis = analysisResult {
-                print("DEBUG SAVE: Saving analysis - Lessons: \(analysis.lessons.count), Exercises: \(analysis.exercises.count)")
+                print("DEBUG SAVE: Saving analysis - Exercises: \(analysis.exercises.count)")
                 print("DEBUG SAVE: Exercise order before encoding:")
                 for (idx, ex) in analysis.exercises.enumerated() {
                     print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
@@ -266,7 +266,7 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                 switch result {
                 case .success(let analysis):
-                    print("DEBUG CLOUD: Cloud analysis successful - Lessons: \(analysis.lessons.count), Exercises: \(analysis.exercises.count)")
+                    print("DEBUG CLOUD: Cloud analysis successful - Exercises: \(analysis.exercises.count)")
                     self.analysisResult = analysis
 
                     // Generate a summary for cloud analysis results
@@ -280,7 +280,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                             case .failure(let error):
                                 print("DEBUG CLOUD: Summary generation failed - \(error.localizedDescription)")
                                 // Fallback to a basic summary
-                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) and \(analysis.lessons.count) lesson(s) in this homework."
+                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
                             }
                         }
                     }

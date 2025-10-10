@@ -31,7 +31,7 @@ extension Item {
         do {
             let decoder = JSONDecoder()
             let result = try decoder.decode(AIAnalysisService.AnalysisResult.self, from: jsonData)
-            print("DEBUG DECODE: Successfully decoded - Lessons: \(result.lessons.count), Exercises: \(result.exercises.count)")
+            print("DEBUG DECODE: Successfully decoded - Exercises: \(result.exercises.count)")
             print("DEBUG DECODE: Exercise order from JSON:")
             for (idx, ex) in result.exercises.enumerated() {
                 print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")

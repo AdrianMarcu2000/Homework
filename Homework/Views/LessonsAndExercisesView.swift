@@ -233,7 +233,7 @@ struct ExerciseCard: View {
                 Button(action: { showHints = true }) {
                     HStack {
                         Image(systemName: "lightbulb.fill")
-                        Text("Hints")
+                        Text("Give me a hint")
                     }
                     .font(.subheadline)
                     .fontWeight(.medium)

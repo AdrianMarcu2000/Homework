@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4037A3A32E9958D700EE6957 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 4037A3A22E9958D700EE6957 /* FirebaseAppCheck */; };
+		4037A3A52E9958D700EE6957 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4037A3A42E9958D700EE6957 /* FirebaseCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		404E14FE2E96E1AC00E01643 /* Homework.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homework.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -36,6 +41,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4037A3A52E9958D700EE6957 /* FirebaseCore in Frameworks */,
+				4037A3A32E9958D700EE6957 /* FirebaseAppCheck in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +85,8 @@
 			);
 			name = Homework;
 			packageProductDependencies = (
+				4037A3A22E9958D700EE6957 /* FirebaseAppCheck */,
+				4037A3A42E9958D700EE6957 /* FirebaseCore */,
 			);
 			productName = Homework;
 			productReference = 404E14FE2E96E1AC00E01643 /* Homework.app */;
@@ -107,6 +116,9 @@
 			);
 			mainGroup = 404E14F52E96E1AC00E01643;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4037A3A12E9958D700EE6957 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 404E14FF2E96E1AC00E01643 /* Products */;
 			projectDirPath = "";
@@ -357,6 +369,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4037A3A12E9958D700EE6957 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4037A3A22E9958D700EE6957 /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4037A3A12E9958D700EE6957 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
+		};
+		4037A3A42E9958D700EE6957 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4037A3A12E9958D700EE6957 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 404E14F62E96E1AC00E01643 /* Project object */;
 }

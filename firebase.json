@@ -17,7 +17,8 @@
   ],
   "emulators": {
     "functions": {
-      "port": 5001
+      "port": 5001,
+      "timeout": "540s"
     },
     "ui": {
       "enabled": true

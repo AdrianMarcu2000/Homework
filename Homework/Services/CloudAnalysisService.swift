@@ -7,6 +7,7 @@
 
 import UIKit
 import Foundation
+import FirebaseAppCheck
 
 /// Cloud response structure matching Firebase function output
 struct CloudAnalysisResult: Sendable {
@@ -50,6 +51,27 @@ extension CloudAnalysisResult.Section: Codable {
     }
 }
 
+/// Request structure for cloud analysis
+struct AnalysisRequest: Sendable {
+    let imageBase64: String
+    let imageMimeType: String
+    let ocrJsonText: String
+}
+
+// Explicitly implement Encodable outside of MainActor context
+extension AnalysisRequest: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case imageBase64, imageMimeType, ocrJsonText
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(imageBase64, forKey: .imageBase64)
+        try container.encode(imageMimeType, forKey: .imageMimeType)
+        try container.encode(ocrJsonText, forKey: .ocrJsonText)
+    }
+}
+
 /// Service for analyzing homework using cloud-based LLMs via Firebase Functions
 class CloudAnalysisService {
     static let shared = CloudAnalysisService()
@@ -67,12 +89,6 @@ class CloudAnalysisService {
         }
     }
 
-    /// Request structure for cloud analysis
-    private struct AnalysisRequest: Encodable {
-        let imageBase64: String
-        let imageMimeType: String
-        let ocrJsonText: String
-    }
 
     /// Analyzes homework using cloud LLM
     ///
@@ -85,28 +101,81 @@ class CloudAnalysisService {
         ocrBlocks: [AIAnalysisService.OCRBlock],
         completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
     ) {
-        // Convert image to base64
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+        #if DEBUG
+        // In DEBUG mode, skip App Check for local emulator testing
+        // Use a bypass token that the emulator will accept
+        let appCheckToken = "emulator-bypass-token"
+        print("🔐 DEBUG CLOUD: Using emulator bypass token (App Check disabled)")
+        print("💡 To test App Check, build in RELEASE mode on a physical device")
+
+        // Proceed directly to image conversion
+        self.performAnalysisRequest(
+            image: image,
+            ocrBlocks: ocrBlocks,
+            appCheckToken: appCheckToken,
+            completion: completion
+        )
+        #else
+        // In RELEASE mode, get real App Check token
+        print("🔐 RELEASE: Getting App Check token...")
+        AppCheck.appCheck().token(forcingRefresh: false) { token, error in
+            if let error = error {
+                print("❌ App Check token error - \(error.localizedDescription)")
+                completion(.failure(CloudAnalysisError.appCheckFailed(error)))
+                return
+            }
+
+            guard let token = token else {
+                print("❌ No App Check token received")
+                completion(.failure(CloudAnalysisError.noAppCheckToken))
+                return
+            }
+
+            let appCheckToken = token.token
+            print("✅ App Check token obtained successfully")
+
+            // Proceed with the request
+            self.performAnalysisRequest(
+                image: image,
+                ocrBlocks: ocrBlocks,
+                appCheckToken: appCheckToken,
+                completion: completion
+            )
+        }
+        #endif
+    }
+
+    /// Performs the actual analysis request with the given App Check token
+    private func performAnalysisRequest(
+        image: UIImage,
+        ocrBlocks: [AIAnalysisService.OCRBlock],
+        appCheckToken: String,
+        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
+    ) {
+        // Step 1: Convert image to base64
+        // Compress more aggressively for faster upload/processing
+        guard let imageData = image.jpegData(compressionQuality: 0.5) else {
             completion(.failure(CloudAnalysisError.imageConversionFailed))
             return
         }
         let imageBase64 = imageData.base64EncodedString()
 
-        // Format OCR blocks as text with coordinates
-        let ocrJsonText = formatOCRBlocks(ocrBlocks)
+        // Step 2: Format OCR blocks as text with coordinates
+        let ocrJsonText = self.formatOCRBlocks(ocrBlocks)
 
-        // Create request
+        // Step 3: Create request
         let requestBody = AnalysisRequest(
             imageBase64: imageBase64,
             imageMimeType: "image/jpeg",
             ocrJsonText: ocrJsonText
         )
 
-        // Call Firebase endpoint
+        // Step 4: Call Firebase endpoint with App Check token
         let url = URL(string: "\(Config.baseURL)/analyzeHomework")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
 
         do {
             request.httpBody = try JSONEncoder().encode(requestBody)
@@ -118,7 +187,7 @@ class CloudAnalysisService {
         print("DEBUG CLOUD: Sending request to \(url.absoluteString)")
         print("DEBUG CLOUD: OCR text length: \(ocrJsonText.count) characters")
 
-        // Execute request
+        // Step 5: Execute request
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("DEBUG CLOUD: Network error - \(error.localizedDescription)")
@@ -145,9 +214,8 @@ class CloudAnalysisService {
                 return
             }
 
-            // Decode and convert (URLSession callback is already on background thread)
+            // Decode and convert
             do {
-                // Parse cloud response
                 let cloudResult = try JSONDecoder().decode(CloudAnalysisResult.self, from: data)
                 print("DEBUG CLOUD: Successfully decoded response - Summary: \(cloudResult.summary)")
                 print("DEBUG CLOUD: Found \(cloudResult.sections.count) sections")
@@ -250,6 +318,8 @@ class CloudAnalysisService {
         case serverError(Int, String)
         case noData
         case decodingFailed(Error)
+        case appCheckFailed(Error)
+        case noAppCheckToken
 
         var errorDescription: String? {
             switch self {
@@ -267,6 +337,10 @@ class CloudAnalysisService {
                 return "No data received from server"
             case .decodingFailed(let error):
                 return "Failed to decode response: \(error.localizedDescription)"
+            case .appCheckFailed(let error):
+                return "App Check verification failed: \(error.localizedDescription)"
+            case .noAppCheckToken:
+                return "Failed to obtain App Check token"
             }
         }
     }

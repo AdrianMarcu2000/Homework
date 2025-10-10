@@ -8,6 +8,48 @@
 import UIKit
 import Foundation
 
+/// Cloud response structure matching Firebase function output
+struct CloudAnalysisResult: Sendable {
+    let summary: String
+    let sections: [Section]
+
+    struct Section: Sendable {
+        let type: String // "EXERCISE" or "SKIP"
+        let title: String
+        let content: String
+        let yStart: Int
+        let yEnd: Int
+    }
+}
+
+// Explicitly implement Codable outside of MainActor context
+extension CloudAnalysisResult: Codable {
+    enum CodingKeys: String, CodingKey {
+        case summary, sections
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.summary = try container.decode(String.self, forKey: .summary)
+        self.sections = try container.decode([Section].self, forKey: .sections)
+    }
+}
+
+extension CloudAnalysisResult.Section: Codable {
+    enum CodingKeys: String, CodingKey {
+        case type, title, content, yStart, yEnd
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = try container.decode(String.self, forKey: .type)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.content = try container.decode(String.self, forKey: .content)
+        self.yStart = try container.decode(Int.self, forKey: .yStart)
+        self.yEnd = try container.decode(Int.self, forKey: .yEnd)
+    }
+}
+
 /// Service for analyzing homework using cloud-based LLMs via Firebase Functions
 class CloudAnalysisService {
     static let shared = CloudAnalysisService()
@@ -30,20 +72,6 @@ class CloudAnalysisService {
         let imageBase64: String
         let imageMimeType: String
         let ocrJsonText: String
-    }
-
-    /// Cloud response structure matching Firebase function output
-    struct CloudAnalysisResult: Codable {
-        let summary: String
-        let sections: [Section]
-
-        struct Section: Codable {
-            let type: String // "EXERCISE" or "SKIP"
-            let title: String
-            let content: String
-            let yStart: Int
-            let yEnd: Int
-        }
     }
 
     /// Analyzes homework using cloud LLM
@@ -117,6 +145,7 @@ class CloudAnalysisService {
                 return
             }
 
+            // Decode and convert (URLSession callback is already on background thread)
             do {
                 // Parse cloud response
                 let cloudResult = try JSONDecoder().decode(CloudAnalysisResult.self, from: data)
@@ -124,7 +153,7 @@ class CloudAnalysisService {
                 print("DEBUG CLOUD: Found \(cloudResult.sections.count) sections")
 
                 // Convert to our format
-                let analysisResult = self.convertToAnalysisResult(cloudResult)
+                let analysisResult = Self.convertToAnalysisResult(cloudResult)
                 print("DEBUG CLOUD: Converted to - Exercises: \(analysisResult.exercises.count)")
 
                 completion(.success(analysisResult))
@@ -153,7 +182,7 @@ class CloudAnalysisService {
     }
 
     /// Converts cloud response to our internal format
-    private func convertToAnalysisResult(_ cloudResult: CloudAnalysisResult) -> AIAnalysisService.AnalysisResult {
+    private static func convertToAnalysisResult(_ cloudResult: CloudAnalysisResult) -> AIAnalysisService.AnalysisResult {
         var exercises: [AIAnalysisService.Exercise] = []
 
         for section in cloudResult.sections {
@@ -185,14 +214,14 @@ class CloudAnalysisService {
     }
 
     /// Extracts exercise number from title
-    private func extractExerciseNumber(from title: String) -> String {
+    private static func extractExerciseNumber(from title: String) -> String {
         // Look for digits in the title
         let digits = title.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
         return digits.isEmpty ? "1" : digits
     }
 
     /// Infers exercise type from content
-    private func inferExerciseType(from content: String) -> String {
+    private static func inferExerciseType(from content: String) -> String {
         let lowercased = content.lowercased()
 
         if lowercased.contains("multiple choice") || lowercased.contains("choose") {

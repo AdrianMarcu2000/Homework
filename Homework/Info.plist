@@ -10,5 +10,7 @@
 	<string>This app needs access to the camera to take photos of homework assignments.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs access to the photo library to select homework images.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to securely access your homework and protect your academic data.</string>
 </dict>
 </plist>

@@ -36,6 +36,9 @@ struct HomeworkListView: View {
     /// View model for homework capture operations
     var viewModel: HomeworkCaptureViewModel
 
+    /// Show settings sheet
+    @State private var showSettings = false
+
     // MARK: - Body
 
     var body: some View {
@@ -48,7 +51,14 @@ struct HomeworkListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                EditButton()
+                HStack(spacing: 12) {
+                    EditButton()
+
+                    Button(action: { showSettings = true }) {
+                        Label("Settings", systemImage: "gearshape")
+                            .labelStyle(.iconOnly)
+                    }
+                }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
@@ -65,6 +75,9 @@ struct HomeworkListView: View {
             }
         }
         .navigationTitle("Homework")
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
     }
 
     // MARK: - Private Methods

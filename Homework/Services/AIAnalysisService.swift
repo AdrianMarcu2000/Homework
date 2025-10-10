@@ -53,6 +53,13 @@ class AIAnalysisService {
         let exercises: [Exercise]
     }
 
+    /// Result from analyzing a single segment
+    private struct SegmentAnalysisResult: Codable {
+        let type: String // "lesson", "exercise", or "neither"
+        let lesson: Lesson?
+        let exercise: Exercise?
+    }
+
     /// Generated similar exercise
     struct SimilarExercise: Codable, Identifiable {
         var id: UUID { UUID() }
@@ -78,7 +85,202 @@ class AIAnalysisService {
         }
     }
 
-    /// Analyzes a homework image to identify lessons and exercises
+    /// Analyzes a homework image using segment-based approach with text analysis
+    ///
+    /// - Parameters:
+    ///   - image: The homework page image
+    ///   - ocrBlocks: Array of OCR text blocks with Y coordinates
+    ///   - progressHandler: Optional callback for progress updates (current, total)
+    ///   - completion: Callback with the analysis result or error
+    func analyzeHomeworkWithSegments(
+        image: UIImage,
+        ocrBlocks: [OCRBlock],
+        progressHandler: ((Int, Int) -> Void)? = nil,
+        completion: @escaping (Result<AnalysisResult, Error>) -> Void
+    ) {
+        // Check if model is available
+        guard isModelAvailable else {
+            completion(.failure(AIAnalysisError.analysisUnavailable))
+            return
+        }
+
+        // Step 1: Segment the image based on OCR gaps
+        let segments = ImageSegmentationService.shared.segmentImage(
+            image: image,
+            ocrBlocks: ocrBlocks.map { OCRService.OCRBlock(text: $0.text, y: $0.y) },
+            gapThreshold: 0.05
+        )
+
+        print("DEBUG SEGMENTATION: Created \(segments.count) initial segments")
+
+        // Merge small segments to avoid over-fragmentation
+        let mergedSegments = ImageSegmentationService.shared.mergeSmallSegments(
+            segments,
+            minSegmentHeight: 0.03,
+            fullImage: image
+        )
+
+        print("DEBUG SEGMENTATION: After merging: \(mergedSegments.count) segments")
+
+        guard !mergedSegments.isEmpty else {
+            completion(.failure(AIAnalysisError.parsingFailed(NSError(
+                domain: "AIAnalysis",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "No segments found"]
+            ))))
+            return
+        }
+
+        // Build condensed page context (just Y-coordinate ranges to avoid context overflow)
+        let pageContext = mergedSegments.enumerated().map { index, seg in
+            "Segment \(index + 1): Y \(String(format: "%.3f", seg.startY)) - \(String(format: "%.3f", seg.endY))"
+        }.joined(separator: "\n")
+
+        // Step 2: Analyze each segment with text-based context
+        Task {
+            var allLessons: [Lesson] = []
+            var allExercises: [Exercise] = []
+
+            let totalSegments = mergedSegments.count
+
+            for (index, segment) in mergedSegments.enumerated() {
+                // Report progress
+                await MainActor.run {
+                    progressHandler?(index + 1, totalSegments)
+                }
+
+                // Create segment OCR text
+                let segmentOCRText = segment.ocrBlocks.map { $0.text }.joined(separator: "\n")
+
+                let prompt = """
+You are analyzing a SEGMENT of a homework page.
+
+PAGE STRUCTURE (all segments):
+\(pageContext)
+
+SEGMENT \(index + 1) of \(mergedSegments.count) TO ANALYZE:
+Y-coordinates: \(String(format: "%.3f", segment.startY)) to \(String(format: "%.3f", segment.endY))
+
+Segment OCR Text:
+\(segmentOCRText)
+
+CRITICAL: Analyze ONLY this specific segment. Classify it as EITHER a lesson OR an exercise (or neither if it's just a title/header).
+
+IMPORTANT HINT: If the text contains ANY questions, question marks, or asks the student to perform a task, it is almost ALWAYS an exercise, NOT a lesson.
+
+LESSON (theoretical content only):
+- Explanations, definitions, formulas, theorems, concepts
+- Solved examples WITH complete solutions already shown
+- Educational text that TEACHES (does NOT ask questions or request action)
+- Must be purely informational/instructional
+- NO question marks or imperatives
+
+EXERCISE (tasks for students):
+- Questions, problems, or tasks that ASK the student to do something
+- Has identifier (number/letter) AND requires student work
+- Contains question words: "Find", "Calculate", "Solve", "Show", "Prove", "Determine"
+- Contains instruction words: "Complete", "Fill in", "Draw", "Explain"
+- Contains question marks (?) or imperative verbs
+- Problems WITHOUT solutions (blank spaces for answers)
+- If it asks a question or requests an action → it's an EXERCISE, not a lesson
+
+NEITHER: Just titles, headers, page numbers, or decorative content
+
+Return ONLY valid JSON. IMPORTANT: Include ONLY the field that matches the type!
+
+If type is "lesson", return:
+{
+    "type": "lesson",
+    "lesson": {
+        "topic": "Brief topic",
+        "fullContent": "Complete text",
+        "startY": \(segment.startY),
+        "endY": \(segment.endY)
+    }
+}
+
+If type is "exercise", return:
+{
+    "type": "exercise",
+    "exercise": {
+        "exerciseNumber": "1",
+        "type": "mathematical",
+        "fullContent": "Complete text",
+        "startY": \(segment.startY),
+        "endY": \(segment.endY)
+    }
+}
+
+If type is "neither", return:
+{
+    "type": "neither"
+}
+
+Exercise types: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, diagram, other
+
+Use plain text for math (no LaTeX). Do NOT include both lesson and exercise fields.
+"""
+
+                do {
+                    let response = try await session.respond(to: prompt)
+
+                    print("DEBUG: AI Response for segment \(index + 1):")
+                    print(response.content)
+
+                    let jsonString = extractJSON(from: response.content)
+
+                    print("DEBUG: Extracted JSON:")
+                    print(jsonString)
+
+                    guard let data = jsonString.data(using: .utf8) else {
+                        print("DEBUG: Failed to convert JSON to data for segment \(index + 1)")
+                        continue
+                    }
+
+                    // Parse segment result
+                    let segmentResult = try JSONDecoder().decode(SegmentAnalysisResult.self, from: data)
+
+                    print("DEBUG: Segment \(index + 1) - Type: \(segmentResult.type)")
+
+                    if segmentResult.type == "lesson", let lesson = segmentResult.lesson {
+                        print("DEBUG: Found lesson - \(lesson.topic), Y: \(lesson.startY)-\(lesson.endY)")
+                        allLessons.append(lesson)
+                    } else if segmentResult.type == "exercise", let exercise = segmentResult.exercise {
+                        print("DEBUG: Found exercise #\(exercise.exerciseNumber), Y: \(exercise.startY)-\(exercise.endY)")
+                        allExercises.append(exercise)
+                    } else {
+                        print("DEBUG: Segment classified as 'neither' or no data")
+                    }
+                } catch {
+                    print("DEBUG: Error analyzing segment \(index + 1): \(error.localizedDescription)")
+                    print("DEBUG: Continuing with remaining segments...")
+                    continue
+                }
+            }
+
+            // Step 3: Combine all results, sorted by Y-position (document order: top to bottom)
+            // In Vision coordinates, higher Y = higher on page, so sort DESCENDING for reading order
+            let sortedLessons = allLessons.sorted { $0.startY > $1.startY }
+            let sortedExercises = allExercises.sorted { $0.startY > $1.startY }
+
+            print("DEBUG: Final analysis complete - Lessons: \(allLessons.count), Exercises: \(allExercises.count)")
+            print("DEBUG: Exercise order after sorting (top to bottom):")
+            for (idx, ex) in sortedExercises.enumerated() {
+                print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
+            }
+
+            let finalResult = AnalysisResult(
+                lessons: sortedLessons,
+                exercises: sortedExercises
+            )
+
+            await MainActor.run {
+                completion(.success(finalResult))
+            }
+        }
+    }
+
+    /// Original homework analysis method (fallback)
     ///
     /// - Parameters:
     ///   - image: The homework page image
@@ -111,21 +313,24 @@ class AIAnalysisService {
 
         Core Classification Rules:
 
-        LESSON: Theoretical content OR solved examples
-        - Explanatory text, definitions, formulas, concepts
-        - Worked examples WITH complete solutions shown
-        - Any exercise that already has answers filled in
+        IMPORTANT HINT: If the text contains ANY questions, question marks, or asks the student to perform a task, it is almost ALWAYS an exercise, NOT a lesson.
 
-        EXERCISE: Tasks requiring student action
+        LESSON (theoretical content only):
+        - Explanatory text, definitions, formulas, theorems, concepts
+        - Worked examples WITH complete solutions already shown
+        - Educational text that TEACHES (does NOT ask questions or request action)
+        - Must be purely informational/instructional content
+        - NO question marks or imperatives
+
+        EXERCISE (tasks for students):
+        - Questions, problems, or tasks that ASK the student to do something
         - Must have BOTH identifier (number/letter) AND task body
-        - Problems WITHOUT solutions
-        - Blank spaces or areas for student responses
+        - Problems WITHOUT solutions (blank spaces for student responses)
+        - Contains question words: "Find", "Calculate", "Solve", "Show", "Prove", "Determine"
+        - Contains instruction words: "Complete", "Fill in", "Draw", "Explain"
+        - Contains question marks (?) or imperative verbs
+        - If it asks a question or requests an action → it's an EXERCISE, not a lesson
         - A heading alone (e.g., "Exercise 1" with no task) is NOT an exercise
-
-        Detection Patterns:
-        - Numbering: 1., 2), a), (i), A., etc.
-        - Question words: "Find", "Calculate", "Solve", "Determine", "Prove"
-        - Instruction words: "Show", "Explain", "Draw", "Complete"
         - When the text is more than one paragraph, separate the exercises
 
         CRITICAL: For each identified content item, determine both START and END positions:
@@ -185,7 +390,15 @@ class AIAnalysisService {
                     }
 
                     let decoder = JSONDecoder()
-                    let analysisResult = try decoder.decode(AnalysisResult.self, from: data)
+                    var analysisResult = try decoder.decode(AnalysisResult.self, from: data)
+
+                    // Sort by Y-position to maintain document order (top to bottom)
+                    // In Vision coordinates, higher Y = higher on page, so sort DESCENDING
+                    analysisResult = AnalysisResult(
+                        lessons: analysisResult.lessons.sorted { $0.startY > $1.startY },
+                        exercises: analysisResult.exercises.sorted { $0.startY > $1.startY }
+                    )
+
                     completion(.success(analysisResult))
                 } catch {
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
@@ -262,20 +475,9 @@ class AIAnalysisService {
             do {
                 let response = try await session.respond(to: prompt)
 
-                print("=== SIMILAR EXERCISES ===")
-                print("Full AI Response:")
-                print(response.content)
-                print("========================")
-
                 let jsonString = extractJSON(from: response.content)
 
-                print("Extracted JSON:")
-                print(jsonString)
-                print("========================")
-
                 guard let data = jsonString.data(using: .utf8) else {
-                    print("ERROR: Failed to convert JSON string to data")
-                    print("========================")
                     await MainActor.run {
                         completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1))))
                     }
@@ -284,9 +486,6 @@ class AIAnalysisService {
 
                 let decoder = JSONDecoder()
                 let exercises = try decoder.decode([SimilarExercise].self, from: data)
-
-                print("SUCCESS: Parsed \(exercises.count) similar exercises")
-                print("========================")
 
                 await MainActor.run {
                     completion(.success(exercises))
@@ -366,20 +565,9 @@ class AIAnalysisService {
             do {
                 let response = try await session.respond(to: prompt)
 
-                print("=== HINTS GENERATION ===")
-                print("Full AI Response:")
-                print(response.content)
-                print("========================")
-
                 let jsonString = extractJSON(from: response.content)
 
-                print("Extracted JSON:")
-                print(jsonString)
-                print("========================")
-
                 guard let data = jsonString.data(using: .utf8) else {
-                    print("ERROR: Failed to convert JSON string to data")
-                    print("========================")
                     await MainActor.run {
                         completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1))))
                     }
@@ -389,16 +577,10 @@ class AIAnalysisService {
                 let decoder = JSONDecoder()
                 let hints = try decoder.decode([Hint].self, from: data)
 
-                print("SUCCESS: Parsed \(hints.count) hints")
-                print("========================")
-
                 await MainActor.run {
                     completion(.success(hints))
                 }
             } catch {
-                print("ERROR: Parsing hints failed")
-                print("Error details: \(error)")
-                print("========================")
                 await MainActor.run {
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }

@@ -36,6 +36,9 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// Controls the visibility of the text extraction result sheet
     @Published var showTextSheet = false
 
+    /// Progress information for segment analysis
+    @Published var analysisProgress: (current: Int, total: Int)? = nil
+
     /// Stores the OCR blocks with position information for AI analysis
     private var ocrBlocks: [OCRService.OCRBlock] = []
 
@@ -85,6 +88,7 @@ class HomeworkCaptureViewModel: ObservableObject {
         extractedText = ""
         ocrBlocks = []
         analysisResult = nil
+        analysisProgress = nil
 
         // Step 1: Perform OCR with block position information
         OCRService.shared.recognizeTextWithBlocks(from: image) { [weak self] result in
@@ -120,22 +124,31 @@ class HomeworkCaptureViewModel: ObservableObject {
             AIAnalysisService.OCRBlock(text: block.text, y: block.y)
         }
 
-        AIAnalysisService.shared.analyzeHomework(
+        // Use segment-based analysis with progress tracking
+        AIAnalysisService.shared.analyzeHomeworkWithSegments(
             image: image,
-            ocrBlocks: aiBlocks
+            ocrBlocks: aiBlocks,
+            progressHandler: { [weak self] current, total in
+                DispatchQueue.main.async {
+                    self?.analysisProgress = (current, total)
+                }
+            }
         ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
                 self.isProcessingOCR = false
+                self.analysisProgress = nil
 
                 switch result {
                 case .success(let analysis):
+                    print("DEBUG VM: Received analysis - Lessons: \(analysis.lessons.count), Exercises: \(analysis.exercises.count)")
                     self.analysisResult = analysis
 
-                case .failure:
-                    print ("Problem")
+                case .failure(let error):
+                    print("DEBUG VM: Analysis failed - \(error.localizedDescription)")
                     // Continue with just OCR text if AI analysis fails
+                    break
                 }
             }
         }
@@ -161,16 +174,24 @@ class HomeworkCaptureViewModel: ObservableObject {
 
             // Save AI analysis result as JSON
             if let analysis = analysisResult {
+                print("DEBUG SAVE: Saving analysis - Lessons: \(analysis.lessons.count), Exercises: \(analysis.exercises.count)")
+                print("DEBUG SAVE: Exercise order before encoding:")
+                for (idx, ex) in analysis.exercises.enumerated() {
+                    print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
+                }
                 do {
                     let encoder = JSONEncoder()
                     encoder.outputFormatting = .prettyPrinted
                     let jsonData = try encoder.encode(analysis)
                     if let jsonString = String(data: jsonData, encoding: .utf8) {
                         newItem.analysis = jsonString
+                        print("DEBUG SAVE: Analysis JSON saved successfully")
                     }
                 } catch {
                     print("Error encoding analysis result: \(error)")
                 }
+            } else {
+                print("DEBUG SAVE: No analysis result to save")
             }
 
             do {
@@ -188,5 +209,6 @@ class HomeworkCaptureViewModel: ObservableObject {
         showTextSheet = false
         extractedText = ""
         selectedImage = nil
+        analysisProgress = nil
     }
 }

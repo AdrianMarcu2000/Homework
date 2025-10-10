@@ -90,6 +90,7 @@ private struct ContentViewInternal: View {
             OCRResultView(
                 extractedText: viewModel.extractedText,
                 isProcessing: viewModel.isProcessingOCR,
+                analysisProgress: viewModel.analysisProgress,
                 onSave: { viewModel.saveHomework(context: viewContext) },
                 onCancel: viewModel.dismissTextSheet
             )

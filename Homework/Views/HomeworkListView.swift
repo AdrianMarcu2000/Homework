@@ -196,7 +196,7 @@ struct HomeworkDetailView: View {
                                             .padding(.horizontal)
 
                                         ForEach(Array(analysis.lessons.enumerated()), id: \.offset) { index, lesson in
-                                            LessonCard(lesson: lesson, index: index + 1)
+                                            LessonCard(lesson: lesson, index: index + 1, homeworkItem: item)
                                                 .padding(.horizontal)
                                         }
                                     }

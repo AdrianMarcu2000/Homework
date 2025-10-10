@@ -37,9 +37,10 @@ xcodebuild -project Homework.xcodeproj -scheme Homework clean
 
 1. **Image Capture** → User selects image via camera/photo library (`ImagePicker`, `HomeworkCaptureViewModel`)
 2. **OCR Processing** → Vision framework extracts text and position data (`OCRService`)
-3. **AI Analysis** → Apple Intelligence segments content into lessons/exercises (`AIAnalysisService`)
-4. **Data Persistence** → Results saved to Core Data with CloudKit sync (`PersistenceController`)
-5. **Display** → Structured view of lessons, exercises with interactive features (`HomeworkListView`, `LessonsAndExercisesView`)
+3. **Image Segmentation** → Detects gaps in OCR blocks to split page into logical sections (`ImageSegmentationService`)
+4. **AI Analysis** → Apple Intelligence analyzes each segment with full-page context using multimodal (`AIAnalysisService`)
+5. **Data Persistence** → Results saved to Core Data with CloudKit sync (`PersistenceController`)
+6. **Display** → Structured view of lessons, exercises with cropped images (`HomeworkListView`, `LessonsAndExercisesView`)
 
 ### Key Services
 
@@ -49,14 +50,26 @@ xcodebuild -project Homework.xcodeproj -scheme Homework clean
 - Returns `OCRResult` containing both full text and positioned `OCRBlock` arrays
 - Used by: `HomeworkCaptureViewModel.performOCR(on:)`
 
+**ImageSegmentationService** (`Services/ImageSegmentationService.swift`)
+- Singleton service that segments homework images into logical sections
+- Analyzes gaps between OCR blocks (default threshold: 5% of image height)
+- Returns array of `ImageSegment` with cropped images and associated OCR blocks
+- Key methods:
+  - `segmentImage(image:ocrBlocks:gapThreshold:)` - Detects gaps and creates segments
+  - `mergeSmallSegments(_:minSegmentHeight:fullImage:)` - Merges fragments to avoid over-segmentation
+- Each segment contains: `startY`, `endY`, `croppedImage`, `ocrBlocks`
+
 **AIAnalysisService** (`Services/AIAnalysisService.swift`)
 - Singleton service using Apple's FoundationModels framework
-- Analyzes OCR blocks to segment homework into lessons and exercises
+- **NEW: Segment-based analysis** - Analyzes each section individually with full-page OCR context
 - Requires iOS 18.1+ for Apple Intelligence availability
 - Key methods:
-  - `analyzeHomework(image:ocrBlocks:completion:)` - Main analysis pipeline
+  - `analyzeHomeworkWithSegments(image:ocrBlocks:completion:)` - **Primary method** using segment-based text analysis
+  - `analyzeHomework(image:ocrBlocks:completion:)` - Single-pass full-page analysis (fallback)
   - `generateSimilarExercises(basedOn:count:completion:)` - Creates practice exercises
   - `generateHints(for:completion:)` - Generates 3 progressive hints per exercise
+- Uses `SystemLanguageModel` with full-page OCR context provided to each segment
+- Each segment analyzed individually but with awareness of full page structure via OCR text
 - Returns structured JSON parsed into `AnalysisResult`, `SimilarExercise`, and `Hint` types
 - **Important:** AI responses must avoid LaTeX notation; the service includes `extractJSON()` helper to clean responses
 
@@ -208,19 +221,60 @@ Homework/
 │   ├── HintsView.swift
 │   └── OCRResultView.swift
 ├── Services/
-│   └── AIAnalysisService.swift    # Apple Intelligence integration
+│   ├── AIAnalysisService.swift    # Apple Intelligence multimodal integration
+│   └── ImageSegmentationService.swift  # OCR-based image segmentation
 ├── OCRService.swift               # Vision OCR wrapper
 ├── ImagePicker.swift              # UIImagePickerController bridge
+├── Extensions/
+│   └── UIImage+Crop.swift         # Image cropping utilities
 ├── Styles/
 │   └── GlassmorphicButtonStyle.swift
 ├── Info.plist
 └── Homework.entitlements          # iCloud + App Groups
 ```
 
+## Segment-Based Analysis Architecture
+
+The app uses a hybrid approach combining OCR-based segmentation with focused AI text analysis:
+
+### Phase 1: Segmentation
+1. OCR extracts text blocks with Y-coordinates (Vision framework, bottom-left origin)
+2. `ImageSegmentationService` detects gaps between blocks (default: 5% threshold)
+3. Image is split into logical segments based on detected gaps
+4. Small segments are merged to avoid over-fragmentation (min height: 3%)
+5. Each segment gets its own cropped image + associated OCR blocks
+
+### Phase 2: Text-Based Segment Analysis
+1. For each segment, AI receives:
+   - **Full page OCR text** (for context and relationships)
+   - **Segment OCR text** (for focused analysis)
+   - **Segment position** (Y-coordinates and segment number)
+2. AI classifies segment as: `lesson`, `exercise`, or `neither`
+3. Understands context from full page OCR (e.g., exercise numbering sequence)
+4. Focused analysis on just the segment's text content
+
+### Phase 3: Result Combination
+1. All segment results aggregated into single `AnalysisResult`
+2. Lessons and exercises maintain their Y-coordinates for image cropping
+3. Results saved to Core Data as JSON
+4. Cropped images displayed in UI using stored coordinates
+
+### Advantages
+✅ Context preservation (full page OCR visible to AI)
+✅ Better accuracy per section (focused analysis)
+✅ Logical segmentation based on page structure
+✅ Visual display (cropped images shown in exercise/lesson cards)
+
+### Coordinate System Notes
+- Vision OCR: Y=0 is **bottom**, Y=1 is **top** (bottom-left origin)
+- Image cropping: Flips Y coordinates to match UIKit (top-left origin)
+- All stored coordinates use Vision's bottom-left convention for consistency
+
 ## Development Notes
 
 - **Swift Concurrency:** Project uses `SWIFT_APPROACHABLE_CONCURRENCY = YES` and `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
-- **UI Design:** Custom glassmorphic button style, gradient toolbars, tab-based detail view
+- **UI Design:** Custom glassmorphic button style with liquid glass materials, gradient toolbars, tab-based detail view
 - **Error Handling:** Most Core Data operations use `fatalError()` - production code would need proper error handling
 - **Preview Support:** Uses `PersistenceController.preview` for in-memory Core Data in SwiftUI previews
-- **Position Tracking:** Y-coordinates from Vision (0.0 = top, 1.0 = bottom) used for content segmentation
+- **Image Cropping:** `UIImage+Crop` extension handles Y-coordinate flipping and padding for visual crops
+- **Position Tracking:** Y-coordinates from Vision (0.0 = bottom, 1.0 = top) used throughout for consistency

@@ -20,6 +20,9 @@ struct OCRResultView: View {
     /// Indicates whether OCR processing is currently in progress
     let isProcessing: Bool
 
+    /// Progress information (current segment, total segments)
+    let analysisProgress: (current: Int, total: Int)?
+
     /// Callback triggered when the user taps the Save button
     var onSave: () -> Void
 
@@ -32,46 +35,49 @@ struct OCRResultView: View {
         NavigationView {
             VStack {
                 if isProcessing {
-                    OCRLoadingView()
+                    OCRLoadingView(progress: analysisProgress)
                 } else {
                     OCRTextContentView(text: extractedText)
                 }
             }
-            .navigationTitle("Extracted Text")
+            .navigationTitle(isProcessing ? "Analyzing Image" : "Extracted Text")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel", action: onCancel)
-                        .buttonStyle(GlassmorphicButtonStyle())
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save", action: onSave)
                         .disabled(extractedText.isEmpty)
-                        .buttonStyle(GlassmorphicButtonStyle())
                 }
             }
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.1, green: 0.1, blue: 0.15),
-                        Color(red: 0.15, green: 0.15, blue: 0.2)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                for: .navigationBar
-            )
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 }
 
-/// A view showing a progress indicator during OCR processing.
+/// A view showing a progress indicator during image analysis.
 private struct OCRLoadingView: View {
+    let progress: (current: Int, total: Int)?
+
     var body: some View {
-        ProgressView("Extracting text...")
-            .padding()
+        VStack(spacing: 20) {
+            if let progress = progress {
+                // Determinate progress with segment info
+                VStack(spacing: 12) {
+                    ProgressView(value: Double(progress.current), total: Double(progress.total))
+                        .progressViewStyle(.linear)
+                        .frame(maxWidth: 300)
+
+                    Text("Analyzing segment \(progress.current) of \(progress.total)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            } else {
+                // Indeterminate progress
+                ProgressView("Analyzing image...")
+            }
+        }
+        .padding()
     }
 }
 
@@ -91,10 +97,21 @@ private struct OCRTextContentView: View {
 
 // MARK: - Previews
 
-#Preview("Processing") {
+#Preview("Processing - Initial") {
     OCRResultView(
         extractedText: "",
         isProcessing: true,
+        analysisProgress: nil,
+        onSave: {},
+        onCancel: {}
+    )
+}
+
+#Preview("Processing - With Progress") {
+    OCRResultView(
+        extractedText: "",
+        isProcessing: true,
+        analysisProgress: (current: 3, total: 7),
         onSave: {},
         onCancel: {}
     )
@@ -104,6 +121,7 @@ private struct OCRTextContentView: View {
     OCRResultView(
         extractedText: "Sample homework text\nLine 2\nLine 3",
         isProcessing: false,
+        analysisProgress: nil,
         onSave: {},
         onCancel: {}
     )

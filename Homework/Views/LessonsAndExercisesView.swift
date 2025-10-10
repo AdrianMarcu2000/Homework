@@ -39,7 +39,7 @@ struct LessonsAndExercisesView: View {
                         .fontWeight(.bold)
 
                     ForEach(Array(analysis.lessons.enumerated()), id: \.offset) { index, lesson in
-                        LessonCard(lesson: lesson, index: index + 1)
+                        LessonCard(lesson: lesson, index: index + 1, homeworkItem: homeworkItem)
                     }
                 }
             }
@@ -106,22 +106,44 @@ private struct SummaryCard: View {
 struct LessonCard: View {
     let lesson: AIAnalysisService.Lesson
     let index: Int
+    let homeworkItem: Item
+
+    /// Computed property to get the cropped image for this lesson
+    private var croppedLessonImage: UIImage? {
+        guard let imageData = homeworkItem.imageData,
+              let fullImage = UIImage(data: imageData) else {
+            return nil
+        }
+        return fullImage.crop(startY: lesson.startY, endY: lesson.endY, padding: 0.03)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Lesson \(index)")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundColor(.blue)
                 Spacer()
-                Text("Y: \(String(format: "%.2f", lesson.startY))-\(String(format: "%.2f", lesson.endY))")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
             }
 
             Text(lesson.topic)
                 .font(.headline)
+
+            // Cropped lesson image
+            if let croppedImage = croppedLessonImage {
+                Image(uiImage: croppedImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.white)
+                    .cornerRadius(8)
+                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+                    )
+            }
 
             Text(lesson.fullContent)
                 .font(.body)
@@ -146,6 +168,15 @@ struct ExerciseCard: View {
     @State private var showHints = false
     @State private var canvasData: Data?
 
+    /// Computed property to get the cropped image for this exercise
+    private var croppedExerciseImage: UIImage? {
+        guard let imageData = homeworkItem.imageData,
+              let fullImage = UIImage(data: imageData) else {
+            return nil
+        }
+        return fullImage.crop(startY: exercise.startY, endY: exercise.endY, padding: 0.03)
+    }
+
     init(exercise: AIAnalysisService.Exercise, homeworkItem: Item) {
         self.exercise = exercise
         self.homeworkItem = homeworkItem
@@ -154,7 +185,8 @@ struct ExerciseCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
             HStack {
                 HStack(spacing: 6) {
                     Text("Exercise")
@@ -175,11 +207,19 @@ struct ExerciseCard: View {
                     .cornerRadius(8)
             }
 
-            HStack {
-                Spacer()
-                Text("Y: \(String(format: "%.2f", exercise.startY))-\(String(format: "%.2f", exercise.endY))")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+            // Cropped exercise image
+            if let croppedImage = croppedExerciseImage {
+                Image(uiImage: croppedImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.white)
+                    .cornerRadius(8)
+                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.green.opacity(0.2), lineWidth: 1)
+                    )
             }
 
             Text(exercise.fullContent)
@@ -294,6 +334,11 @@ struct ExerciseCard: View {
         let context = PersistenceController.preview.container.viewContext
         let item = Item(context: context)
         item.timestamp = Date()
+        // Create a simple white image for preview
+        if let mockImage = UIImage(systemName: "doc.text")?.withTintColor(.black, renderingMode: .alwaysOriginal),
+           let imageData = mockImage.pngData() {
+            item.imageData = imageData
+        }
         return item
     }()
 

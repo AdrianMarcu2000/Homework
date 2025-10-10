@@ -24,14 +24,21 @@ extension Item {
     var analysisResult: AIAnalysisService.AnalysisResult? {
         guard let jsonString = analysis,
               let jsonData = jsonString.data(using: .utf8) else {
+            print("DEBUG DECODE: No analysis JSON found")
             return nil
         }
 
         do {
             let decoder = JSONDecoder()
-            return try decoder.decode(AIAnalysisService.AnalysisResult.self, from: jsonData)
+            let result = try decoder.decode(AIAnalysisService.AnalysisResult.self, from: jsonData)
+            print("DEBUG DECODE: Successfully decoded - Lessons: \(result.lessons.count), Exercises: \(result.exercises.count)")
+            print("DEBUG DECODE: Exercise order from JSON:")
+            for (idx, ex) in result.exercises.enumerated() {
+                print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
+            }
+            return result
         } catch {
-            print("Error decoding analysis result: \(error)")
+            print("DEBUG DECODE: Error decoding analysis result: \(error)")
             return nil
         }
     }

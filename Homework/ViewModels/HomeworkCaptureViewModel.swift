@@ -361,7 +361,9 @@ class HomeworkCaptureViewModel: ObservableObject {
 
     /// Performs cloud analysis for re-analysis
     private func performCloudAnalysisForReanalysis(image: UIImage, ocrBlocks: [OCRService.OCRBlock], item: Item, context: NSManagedObjectContext) {
-        isCloudAnalysisInProgress = true
+        DispatchQueue.main.async {
+            self.isCloudAnalysisInProgress = true
+        }
 
         // Convert OCR blocks to AI service format
         let aiBlocks = ocrBlocks.map { block in
@@ -417,7 +419,9 @@ class HomeworkCaptureViewModel: ObservableObject {
             return
         }
 
-        isCloudAnalysisInProgress = true
+        DispatchQueue.main.async {
+            self.isCloudAnalysisInProgress = true
+        }
 
         // Convert OCR blocks to AI service format
         let aiBlocks = ocrBlocks.map { block in

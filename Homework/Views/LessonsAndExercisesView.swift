@@ -105,6 +105,46 @@ struct ExerciseCard: View {
         _canvasData = State(initialValue: homeworkItem.exerciseAnswers?[key])
     }
 
+    /// Computed view that returns the appropriate input method based on exercise type
+    @ViewBuilder
+    private var answerInputView: some View {
+        let inputType = exercise.inputType ?? "canvas" // default to canvas if not specified
+        let isMath = exercise.subject == "mathematics"
+
+        switch inputType {
+        case "inline":
+            // Inline fill-in-the-blank input
+            InlineAnswerView(exercise: exercise, homeworkItem: homeworkItem)
+
+        case "text":
+            // Simple text input for short answers
+            TextAnswerView(exercise: exercise, homeworkItem: homeworkItem)
+
+        case "canvas":
+            // Canvas for showing work - use math notebook style for math
+            if isMath {
+                MathNotebookCanvasView(exercise: exercise, homeworkItem: homeworkItem, canvasData: $canvasData)
+            } else {
+                DrawingCanvasView(exercise: exercise, homeworkItem: homeworkItem, canvasData: $canvasData)
+            }
+
+        case "both":
+            // Both canvas and text input
+            VStack(spacing: 12) {
+                if isMath {
+                    MathNotebookCanvasView(exercise: exercise, homeworkItem: homeworkItem, canvasData: $canvasData)
+                } else {
+                    DrawingCanvasView(exercise: exercise, homeworkItem: homeworkItem, canvasData: $canvasData)
+                }
+                TextAnswerView(exercise: exercise, homeworkItem: homeworkItem)
+            }
+
+        default:
+            // Fallback to canvas
+            DrawingCanvasView(exercise: exercise, homeworkItem: homeworkItem, canvasData: $canvasData)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
@@ -120,6 +160,23 @@ struct ExerciseCard: View {
                         .foregroundColor(.green)
                 }
                 Spacer()
+
+                // Input type badge
+                if let inputType = exercise.inputType {
+                    HStack(spacing: 4) {
+                        Image(systemName: inputTypeIcon(inputType))
+                            .font(.caption2)
+                        Text(inputType.capitalized)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(inputTypeColor(inputType).opacity(0.2))
+                    .foregroundColor(inputTypeColor(inputType))
+                    .cornerRadius(6)
+                }
+
                 Text(exercise.type.capitalized)
                     .font(.caption)
                     .padding(.horizontal, 8)
@@ -195,15 +252,11 @@ struct ExerciseCard: View {
                 .buttonStyle(.plain)
             }
 
-            // Drawing canvas for answer
+            // Answer input area based on inputType
             Divider()
                 .padding(.vertical, 4)
 
-            DrawingCanvasView(
-                exercise: exercise,
-                homeworkItem: homeworkItem,
-                canvasData: $canvasData
-            )
+            answerInputView
         }
         .padding()
         .background(Color.green.opacity(0.05))
@@ -217,6 +270,30 @@ struct ExerciseCard: View {
         }
         .sheet(isPresented: $showHints) {
             HintsView(exercise: exercise)
+        }
+    }
+
+    // MARK: - Helper Functions
+
+    /// Returns the SF Symbol icon for the input type
+    private func inputTypeIcon(_ inputType: String) -> String {
+        switch inputType {
+        case "inline": return "pencil.line"
+        case "text": return "text.cursor"
+        case "canvas": return "pencil.tip"
+        case "both": return "square.split.2x1"
+        default: return "questionmark"
+        }
+    }
+
+    /// Returns the color for the input type badge
+    private func inputTypeColor(_ inputType: String) -> Color {
+        switch inputType {
+        case "inline": return .orange
+        case "text": return .green
+        case "canvas": return .blue
+        case "both": return .purple
+        default: return .gray
         }
     }
 }

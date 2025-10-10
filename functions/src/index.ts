@@ -31,6 +31,16 @@ const analysisSchema = {
                         type: "STRING",
                         description: "The complete text content of this section, synthesized from the OCR data."
                     },
+                    subject: {
+                        type: "STRING",
+                        description: "The subject/topic of this exercise (e.g., 'mathematics', 'language', 'science', 'history', 'grammar'). Only for EXERCISE type.",
+                        enum: ["mathematics", "language", "science", "history", "grammar", "reading", "writing", "other"]
+                    },
+                    inputType: {
+                        type: "STRING",
+                        description: "The recommended input method for answering this exercise. 'inline' for filling in blanks/placeholders within the exercise, 'text' for short written answers in a separate area, 'canvas' for problems requiring calculations/drawings/diagrams, 'both' for exercises needing both written work and final answer. Only for EXERCISE type.",
+                        enum: ["inline", "text", "canvas", "both"]
+                    },
                     yStart: {
                         type: "INTEGER",
                         description: "The MINIMUM Y coordinate associated with the visual boundary of this section."
@@ -140,11 +150,56 @@ SKIP (type: 'SKIP'):
 - Teacher notes or administrative text
 - Content that is purely decorative or organizational
 
+--- SUBJECT CLASSIFICATION ---
+For each EXERCISE, determine the subject:
+- 'mathematics': Math problems, calculations, equations, geometry, algebra, arithmetic
+- 'language': Grammar, vocabulary, sentence construction, language learning
+- 'science': Biology, physics, chemistry, experiments, scientific concepts
+- 'history': Historical events, dates, historical analysis
+- 'grammar': Specific grammar exercises, punctuation, parts of speech
+- 'reading': Reading comprehension, text analysis
+- 'writing': Essays, creative writing, written composition
+- 'other': Any other subject not listed above
+
+--- INPUT TYPE DETERMINATION ---
+For each EXERCISE, determine the best input method based on these rules:
+
+Use 'inline' when:
+- Fill-in-the-blank exercises with visible placeholders (underscores ___, blank lines, or [blank])
+- Exercises with spaces within sentences to complete
+- Word completion exercises where answer goes in a specific spot
+- Any exercise with explicit blank spaces or placeholders in the text
+- Example: "The capital of France is ___" or "2 + 2 = ___"
+
+Use 'text' when:
+- Simple short-answer questions WITHOUT placeholders (e.g., "What is the capital of France?")
+- Yes/No or true/false questions
+- Definition or vocabulary questions
+- Simple factual recall questions
+- Questions asking for a single word, phrase, or sentence answer
+- Multiple choice questions where student writes the letter
+
+Use 'canvas' when:
+- Mathematics problems requiring calculations, work shown, or step-by-step solving
+- Geometry problems requiring drawings or diagrams
+- Science diagrams or labeled illustrations
+- Any problem where visual work/calculations are expected
+- Problems explicitly asking to "show your work" or "draw"
+- Long-form mathematical solutions
+
+Use 'both' when:
+- Complex math word problems (need calculations + written answer)
+- Science questions requiring both diagrams and explanations
+- Problems asking to "explain" or "justify" your mathematical solution
+- Any exercise requiring both visual work and written explanation
+
 --- IMPORTANT RULES ---
 - If a text segment contains a numbered item with a question or task, it is an EXERCISE.
 - If in doubt between EXERCISE and SKIP, lean toward EXERCISE for numbered items.
 - Each EXERCISE should be a complete, self-contained problem or task.
 - Segment exercises by visual gaps and Y-coordinate jumps in the OCR data.
+- For mathematics exercises, default to 'canvas' or 'both' to allow showing work.
+- For simple recall questions, use 'text' for quick answers.
 
 --- COORDINATE & SYNTHESIS INSTRUCTIONS ---
 1. Use the 'ocrJsonText' data, paying close attention to the Y-coordinates to define the visual boundaries of each section.
@@ -231,6 +286,15 @@ Using both the image and the OCR text with Y-coordinates, identify and segment e
             const structuredOutput = JSON.parse(jsonText);
 
             functions.logger.info(`✅ Successfully analyzed homework. Sections: ${structuredOutput.sections?.length || 0}`);
+
+            // Log exercise details
+            if (structuredOutput.sections) {
+                const exercises = structuredOutput.sections.filter((s: any) => s.type === 'EXERCISE');
+                functions.logger.info(`📝 Found ${exercises.length} exercises:`);
+                exercises.forEach((ex: any, idx: number) => {
+                    functions.logger.info(`   ${idx + 1}. "${ex.title}" - Subject: ${ex.subject || 'N/A'}, Input: ${ex.inputType || 'N/A'}, Type: ${ex.type || 'N/A'}`);
+                });
+            }
 
             // Return the structured JSON to the client
             res.status(200).json(structuredOutput);

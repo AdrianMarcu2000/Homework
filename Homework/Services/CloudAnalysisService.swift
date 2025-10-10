@@ -18,6 +18,8 @@ struct CloudAnalysisResult: Sendable {
         let type: String // "EXERCISE" or "SKIP"
         let title: String
         let content: String
+        let subject: String?
+        let inputType: String?
         let yStart: Int
         let yEnd: Int
     }
@@ -38,7 +40,7 @@ extension CloudAnalysisResult: Codable {
 
 extension CloudAnalysisResult.Section: Codable {
     enum CodingKeys: String, CodingKey {
-        case type, title, content, yStart, yEnd
+        case type, title, content, subject, inputType, yStart, yEnd
     }
 
     nonisolated init(from decoder: Decoder) throws {
@@ -46,6 +48,8 @@ extension CloudAnalysisResult.Section: Codable {
         self.type = try container.decode(String.self, forKey: .type)
         self.title = try container.decode(String.self, forKey: .title)
         self.content = try container.decode(String.self, forKey: .content)
+        self.subject = try container.decodeIfPresent(String.self, forKey: .subject)
+        self.inputType = try container.decodeIfPresent(String.self, forKey: .inputType)
         self.yStart = try container.decode(Int.self, forKey: .yStart)
         self.yEnd = try container.decode(Int.self, forKey: .yEnd)
     }
@@ -266,10 +270,16 @@ class CloudAnalysisService {
                     type: inferExerciseType(from: section.content),
                     fullContent: section.content,
                     startY: startY,
-                    endY: endY
+                    endY: endY,
+                    subject: section.subject,
+                    inputType: section.inputType
                 )
                 exercises.append(exercise)
-                print("DEBUG CLOUD: Converted exercise #\(exerciseNumber)")
+
+                // Log exercise details
+                let subjectStr = section.subject ?? "N/A"
+                let inputTypeStr = section.inputType ?? "N/A"
+                print("📝 Exercise #\(exerciseNumber): Subject=\(subjectStr), Input=\(inputTypeStr), Type=\(exercise.type)")
             } else {
                 print("DEBUG CLOUD: Skipping section type: \(section.type)")
             }

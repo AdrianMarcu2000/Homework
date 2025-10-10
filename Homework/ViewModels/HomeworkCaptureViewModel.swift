@@ -51,6 +51,9 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// Stores the AI analysis result
     private var analysisResult: AIAnalysisService.AnalysisResult?
 
+    /// The item being re-analyzed (if any)
+    @Published var reanalyzingItem: Item?
+
     // MARK: - Private Properties
 
     /// The Core Data managed object context for database operations (used for initialization)
@@ -181,21 +184,31 @@ class HomeworkCaptureViewModel: ObservableObject {
 
     /// Saves the current homework item with extracted text to Core Data.
     ///
-    /// This method creates a new Item entity with the current timestamp,
-    /// extracted text, image data, and AI analysis results, then saves it to the persistent store.
+    /// This method either creates a new Item entity or updates an existing one if in re-analysis mode.
     ///
     /// - Parameter context: The NSManagedObjectContext to use for saving
     func saveHomework(context: NSManagedObjectContext) {
         withAnimation {
-            let newItem = Item(context: context)
-            newItem.timestamp = Date()
-            newItem.extractedText = extractedText
+            let item: Item
 
-            // Convert UIImage to JPEG data for storage
-            if let image = selectedImage,
-               let imageData = image.jpegData(compressionQuality: 0.8) {
-                newItem.imageData = imageData
+            // Check if we're re-analyzing an existing item
+            if let existingItem = reanalyzingItem {
+                item = existingItem
+                print("DEBUG SAVE: Updating existing item")
+            } else {
+                item = Item(context: context)
+                item.timestamp = Date()
+
+                // Convert UIImage to JPEG data for storage (only for new items)
+                if let image = selectedImage,
+                   let imageData = image.jpegData(compressionQuality: 0.8) {
+                    item.imageData = imageData
+                }
+                print("DEBUG SAVE: Creating new item")
             }
+
+            // Update extracted text (summary)
+            item.extractedText = extractedText
 
             // Save AI analysis result as JSON
             if let analysis = analysisResult {
@@ -209,7 +222,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                     encoder.outputFormatting = .prettyPrinted
                     let jsonData = try encoder.encode(analysis)
                     if let jsonString = String(data: jsonData, encoding: .utf8) {
-                        newItem.analysis = jsonString
+                        item.analysis = jsonString
                         print("DEBUG SAVE: Analysis JSON saved successfully")
                     }
                 } catch {
@@ -237,6 +250,164 @@ class HomeworkCaptureViewModel: ObservableObject {
         analysisProgress = nil
         currentImage = nil
         isCloudAnalysisInProgress = false
+        reanalyzingItem = nil
+    }
+
+    /// Re-analyzes an existing homework item
+    ///
+    /// - Parameters:
+    ///   - item: The homework item to re-analyze
+    ///   - context: The Core Data context
+    ///   - useCloud: Whether to use cloud analysis instead of local
+    func reanalyzeHomework(item: Item, context: NSManagedObjectContext, useCloud: Bool = false) {
+        // Load image from item
+        guard let imageData = item.imageData,
+              let image = UIImage(data: imageData) else {
+            print("DEBUG REANALYZE: No image data found in item")
+            return
+        }
+
+        reanalyzingItem = item
+        isProcessingOCR = true
+        showTextSheet = true
+        extractedText = ""
+        ocrBlocks = []
+        analysisResult = nil
+        analysisProgress = nil
+        currentImage = image
+        isCloudAnalysisInProgress = useCloud
+
+        print("DEBUG REANALYZE: Starting re-analysis for item with timestamp: \(item.timestamp?.description ?? "none")")
+
+        // Step 1: Perform OCR with block position information
+        OCRService.shared.recognizeTextWithBlocks(from: image) { [weak self] result in
+            guard let self = self else { return }
+
+            switch result {
+            case .success(let ocrResult):
+                DispatchQueue.main.async {
+                    self.ocrBlocks = ocrResult.blocks
+                    print("DEBUG REANALYZE: OCR completed with \(ocrResult.blocks.count) blocks")
+                }
+
+                // Step 2: Perform AI analysis
+                if useCloud {
+                    self.performCloudAnalysisForReanalysis(image: image, ocrBlocks: ocrResult.blocks, item: item, context: context)
+                } else {
+                    self.analyzeHomeworkContentForReanalysis(image: image, ocrBlocks: ocrResult.blocks, item: item, context: context)
+                }
+
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self.isProcessingOCR = false
+                    print("DEBUG REANALYZE: OCR Error: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Analyzes homework content for re-analysis
+    private func analyzeHomeworkContentForReanalysis(image: UIImage, ocrBlocks: [OCRService.OCRBlock], item: Item, context: NSManagedObjectContext) {
+        // Convert OCRService.OCRBlock to AIAnalysisService.OCRBlock
+        let aiBlocks = ocrBlocks.map { block in
+            AIAnalysisService.OCRBlock(text: block.text, y: block.y)
+        }
+
+        // Use segment-based analysis with progress tracking
+        AIAnalysisService.shared.analyzeHomeworkWithSegments(
+            image: image,
+            ocrBlocks: aiBlocks,
+            progressHandler: { [weak self] current, total in
+                DispatchQueue.main.async {
+                    self?.analysisProgress = (current, total)
+                }
+            }
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+
+                self.analysisProgress = nil
+
+                switch result {
+                case .success(let analysis):
+                    print("DEBUG REANALYZE: Received analysis - Exercises: \(analysis.exercises.count)")
+                    self.analysisResult = analysis
+
+                    // Generate a summary of the homework
+                    AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
+                        DispatchQueue.main.async {
+                            self.isProcessingOCR = false
+
+                            switch summaryResult {
+                            case .success(let summary):
+                                self.extractedText = summary
+                                print("DEBUG REANALYZE: Generated summary: \(summary)")
+
+                            case .failure(let error):
+                                print("DEBUG REANALYZE: Summary generation failed - \(error.localizedDescription)")
+                                // Fallback to a basic summary
+                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
+                            }
+                        }
+                    }
+
+                case .failure(let error):
+                    print("DEBUG REANALYZE: Analysis failed - \(error.localizedDescription)")
+                    self.isProcessingOCR = false
+                }
+            }
+        }
+    }
+
+    /// Performs cloud analysis for re-analysis
+    private func performCloudAnalysisForReanalysis(image: UIImage, ocrBlocks: [OCRService.OCRBlock], item: Item, context: NSManagedObjectContext) {
+        isCloudAnalysisInProgress = true
+
+        // Convert OCR blocks to AI service format
+        let aiBlocks = ocrBlocks.map { block in
+            AIAnalysisService.OCRBlock(text: block.text, y: block.y)
+        }
+
+        print("DEBUG REANALYZE CLOUD: Starting cloud analysis with \(aiBlocks.count) OCR blocks")
+
+        CloudAnalysisService.shared.analyzeHomework(
+            image: image,
+            ocrBlocks: aiBlocks
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+
+                self.isCloudAnalysisInProgress = false
+
+                switch result {
+                case .success(let analysis):
+                    print("DEBUG REANALYZE CLOUD: Cloud analysis successful - Exercises: \(analysis.exercises.count)")
+                    self.analysisResult = analysis
+
+                    // Generate a summary for cloud analysis results
+                    AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
+                        DispatchQueue.main.async {
+                            self.isProcessingOCR = false
+
+                            switch summaryResult {
+                            case .success(let summary):
+                                self.extractedText = summary
+                                print("DEBUG REANALYZE CLOUD: Generated summary: \(summary)")
+
+                            case .failure(let error):
+                                print("DEBUG REANALYZE CLOUD: Summary generation failed - \(error.localizedDescription)")
+                                // Fallback to a basic summary
+                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
+                            }
+                        }
+                    }
+
+                case .failure(let error):
+                    print("DEBUG REANALYZE CLOUD: Cloud analysis failed - \(error.localizedDescription)")
+                    self.isProcessingOCR = false
+                }
+            }
+        }
     }
 
     /// Performs cloud-based analysis using Firebase Functions

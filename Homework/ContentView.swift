@@ -51,13 +51,15 @@ private struct ContentViewInternal: View {
             HomeworkListView(
                 onTakePhoto: viewModel.selectCamera,
                 onChooseFromLibrary: viewModel.selectPhotoLibrary,
-                selectedItem: $selectedItem
+                selectedItem: $selectedItem,
+                viewModel: viewModel
             )
             .environment(\.managedObjectContext, viewContext)
 
             // Main body content
             if let item = selectedItem {
-                HomeworkDetailView(item: item)
+                HomeworkDetailView(item: item, viewModel: viewModel)
+                    .environment(\.managedObjectContext, viewContext)
             } else {
                 // Empty state
                 VStack(spacing: 16) {

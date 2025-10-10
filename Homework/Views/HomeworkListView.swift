@@ -33,6 +33,9 @@ struct HomeworkListView: View {
     /// Binding to the currently selected item
     @Binding var selectedItem: Item?
 
+    /// View model for homework capture operations
+    var viewModel: HomeworkCaptureViewModel
+
     // MARK: - Body
 
     var body: some View {
@@ -143,6 +146,8 @@ struct HomeworkRowView: View {
 /// A detail view for displaying a single homework item's information.
 struct HomeworkDetailView: View {
     let item: Item
+    var viewModel: HomeworkCaptureViewModel
+    @Environment(\.managedObjectContext) private var viewContext
     @State private var selectedTab = 0
 
     var body: some View {
@@ -235,6 +240,24 @@ struct HomeworkDetailView: View {
                     }
                 }
             }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(action: {
+                        viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
+                    }) {
+                        Label("Re-analyze (Local)", systemImage: "arrow.clockwise")
+                    }
+
+                    Button(action: {
+                        viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
+                    }) {
+                        Label("Re-analyze (Cloud)", systemImage: "cloud")
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise.circle")
+                }
+                .disabled(viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+            }
         }
     }
 }
@@ -315,11 +338,14 @@ private let itemFormatter: DateFormatter = {
 // MARK: - Previews
 
 #Preview {
+    let mockViewModel = HomeworkCaptureViewModel(context: PersistenceController.preview.container.viewContext)
+
     NavigationView {
         HomeworkListView(
             onTakePhoto: {},
             onChooseFromLibrary: {},
-            selectedItem: .constant(nil)
+            selectedItem: .constant(nil),
+            viewModel: mockViewModel
         )
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
     }

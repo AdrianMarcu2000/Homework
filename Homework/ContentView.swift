@@ -91,8 +91,10 @@ private struct ContentViewInternal: View {
                 extractedText: viewModel.extractedText,
                 isProcessing: viewModel.isProcessingOCR,
                 analysisProgress: viewModel.analysisProgress,
+                isCloudAnalysisInProgress: viewModel.isCloudAnalysisInProgress,
                 onSave: { viewModel.saveHomework(context: viewContext) },
-                onCancel: viewModel.dismissTextSheet
+                onCancel: viewModel.dismissTextSheet,
+                onCloudAnalysis: viewModel.performCloudAnalysis
             )
         }
     }

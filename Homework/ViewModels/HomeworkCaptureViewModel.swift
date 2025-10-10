@@ -39,8 +39,14 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// Progress information for segment analysis
     @Published var analysisProgress: (current: Int, total: Int)? = nil
 
+    /// Indicates whether cloud analysis is available/in progress
+    @Published var isCloudAnalysisInProgress = false
+
     /// Stores the OCR blocks with position information for AI analysis
     private var ocrBlocks: [OCRService.OCRBlock] = []
+
+    /// Stores the selected image for cloud analysis
+    private var currentImage: UIImage?
 
     /// Stores the AI analysis result
     private var analysisResult: AIAnalysisService.AnalysisResult?
@@ -89,6 +95,7 @@ class HomeworkCaptureViewModel: ObservableObject {
         ocrBlocks = []
         analysisResult = nil
         analysisProgress = nil
+        currentImage = image // Store for cloud analysis
 
         // Step 1: Perform OCR with block position information
         OCRService.shared.recognizeTextWithBlocks(from: image) { [weak self] result in
@@ -210,5 +217,45 @@ class HomeworkCaptureViewModel: ObservableObject {
         extractedText = ""
         selectedImage = nil
         analysisProgress = nil
+        currentImage = nil
+        isCloudAnalysisInProgress = false
+    }
+
+    /// Performs cloud-based analysis using Firebase Functions
+    func performCloudAnalysis() {
+        guard let image = currentImage, !ocrBlocks.isEmpty else {
+            print("DEBUG CLOUD: No image or OCR blocks available for cloud analysis")
+            return
+        }
+
+        isCloudAnalysisInProgress = true
+
+        // Convert OCR blocks to AI service format
+        let aiBlocks = ocrBlocks.map { block in
+            AIAnalysisService.OCRBlock(text: block.text, y: block.y)
+        }
+
+        print("DEBUG CLOUD: Starting cloud analysis with \(aiBlocks.count) OCR blocks")
+
+        CloudAnalysisService.shared.analyzeHomework(
+            image: image,
+            ocrBlocks: aiBlocks
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+
+                self.isCloudAnalysisInProgress = false
+
+                switch result {
+                case .success(let analysis):
+                    print("DEBUG CLOUD: Cloud analysis successful - Lessons: \(analysis.lessons.count), Exercises: \(analysis.exercises.count)")
+                    self.analysisResult = analysis
+
+                case .failure(let error):
+                    print("DEBUG CLOUD: Cloud analysis failed - \(error.localizedDescription)")
+                    // Show error to user (you can add an alert here)
+                }
+            }
+        }
     }
 }

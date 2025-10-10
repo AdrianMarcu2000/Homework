@@ -23,11 +23,17 @@ struct OCRResultView: View {
     /// Progress information (current segment, total segments)
     let analysisProgress: (current: Int, total: Int)?
 
+    /// Indicates whether cloud analysis is in progress
+    let isCloudAnalysisInProgress: Bool
+
     /// Callback triggered when the user taps the Save button
     var onSave: () -> Void
 
     /// Callback triggered when the user taps the Cancel button
     var onCancel: () -> Void
+
+    /// Callback triggered when the user taps the Cloud Analysis button
+    var onCloudAnalysis: (() -> Void)?
 
     // MARK: - Body
 
@@ -40,15 +46,35 @@ struct OCRResultView: View {
                     OCRTextContentView(text: extractedText)
                 }
             }
-            .navigationTitle(isProcessing ? "Analyzing Image" : "Extracted Text")
+            .navigationTitle(isProcessing || isCloudAnalysisInProgress ? "Analyzing Image" : "Extracted Text")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel", action: onCancel)
+                        .disabled(isCloudAnalysisInProgress)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save", action: onSave)
-                        .disabled(extractedText.isEmpty)
+                    HStack(spacing: 12) {
+                        // Cloud Analysis button (only show when not processing and callback is provided)
+                        if !isProcessing && !extractedText.isEmpty, let cloudAction = onCloudAnalysis {
+                            Button(action: cloudAction) {
+                                HStack(spacing: 4) {
+                                    if isCloudAnalysisInProgress {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: "cloud.fill")
+                                    }
+                                    Text(isCloudAnalysisInProgress ? "Analyzing..." : "Cloud AI")
+                                }
+                                .font(.subheadline)
+                            }
+                            .disabled(isCloudAnalysisInProgress)
+                        }
+
+                        Button("Save", action: onSave)
+                            .disabled(extractedText.isEmpty || isCloudAnalysisInProgress)
+                    }
                 }
             }
         }
@@ -102,8 +128,10 @@ private struct OCRTextContentView: View {
         extractedText: "",
         isProcessing: true,
         analysisProgress: nil,
+        isCloudAnalysisInProgress: false,
         onSave: {},
-        onCancel: {}
+        onCancel: {},
+        onCloudAnalysis: {}
     )
 }
 
@@ -112,8 +140,10 @@ private struct OCRTextContentView: View {
         extractedText: "",
         isProcessing: true,
         analysisProgress: (current: 3, total: 7),
+        isCloudAnalysisInProgress: false,
         onSave: {},
-        onCancel: {}
+        onCancel: {},
+        onCloudAnalysis: {}
     )
 }
 
@@ -122,7 +152,21 @@ private struct OCRTextContentView: View {
         extractedText: "Sample homework text\nLine 2\nLine 3",
         isProcessing: false,
         analysisProgress: nil,
+        isCloudAnalysisInProgress: false,
         onSave: {},
-        onCancel: {}
+        onCancel: {},
+        onCloudAnalysis: {}
+    )
+}
+
+#Preview("Cloud Analysis") {
+    OCRResultView(
+        extractedText: "Sample homework text\nLine 2\nLine 3",
+        isProcessing: false,
+        analysisProgress: nil,
+        isCloudAnalysisInProgress: true,
+        onSave: {},
+        onCancel: {},
+        onCloudAnalysis: {}
     )
 }

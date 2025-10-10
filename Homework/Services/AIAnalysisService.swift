@@ -45,6 +45,36 @@ class AIAnalysisService {
         let fullContent: String
         let startY: Double
         let endY: Double
+
+        // Custom decoding to handle null exerciseNumber
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+
+            // If exerciseNumber is null, use "Unknown"
+            if let number = try container.decodeIfPresent(String.self, forKey: .exerciseNumber) {
+                self.exerciseNumber = number
+            } else {
+                self.exerciseNumber = "Unknown"
+            }
+
+            self.type = try container.decode(String.self, forKey: .type)
+            self.fullContent = try container.decode(String.self, forKey: .fullContent)
+            self.startY = try container.decode(Double.self, forKey: .startY)
+            self.endY = try container.decode(Double.self, forKey: .endY)
+        }
+
+        // Regular init for non-decoded creation
+        init(exerciseNumber: String, type: String, fullContent: String, startY: Double, endY: Double) {
+            self.exerciseNumber = exerciseNumber
+            self.type = type
+            self.fullContent = fullContent
+            self.startY = startY
+            self.endY = endY
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case exerciseNumber, type, fullContent, startY, endY
+        }
     }
 
     /// Analysis result containing lessons and exercises
@@ -132,7 +162,7 @@ class AIAnalysisService {
         }
 
         // Build condensed page context (just Y-coordinate ranges to avoid context overflow)
-        let pageContext = mergedSegments.enumerated().map { index, seg in
+        let _ = mergedSegments.enumerated().map { index, seg in
             "Segment \(index + 1): Y \(String(format: "%.3f", seg.startY)) - \(String(format: "%.3f", seg.endY))"
         }.joined(separator: "\n")
 
@@ -149,76 +179,32 @@ class AIAnalysisService {
                     progressHandler?(index + 1, totalSegments)
                 }
 
-                // Create segment OCR text
+                // Create segment OCR text (truncate if too long to avoid context window issues)
                 let segmentOCRText = segment.ocrBlocks.map { $0.text }.joined(separator: "\n")
+                let truncatedText = segmentOCRText.count > 1000 ? String(segmentOCRText.prefix(1000)) + "..." : segmentOCRText
 
                 let prompt = """
-You are analyzing a SEGMENT of a homework page.
+INSTRUCTIONS:
+Classify the TEXT SEGMENT below as exercise, lesson, or neither. Return ONLY JSON, no explanations.
 
-PAGE STRUCTURE (all segments):
-\(pageContext)
+RULES:
+- Numbered items (1., 2., a., etc.) = EXERCISE
+- Questions or imperatives (Find, Solve, Calculate, Write, Complete) = EXERCISE
+- Theoretical explanations = LESSON
+- Pure headers/footers only = NEITHER
 
-SEGMENT \(index + 1) of \(mergedSegments.count) TO ANALYZE:
-Y-coordinates: \(String(format: "%.3f", segment.startY)) to \(String(format: "%.3f", segment.endY))
+RESPONSE FORMAT (choose one):
+Exercise: {"type":"exercise","exercise":{"exerciseNumber":"NUM","type":"TYPE","fullContent":"TEXT","startY":\(segment.startY),"endY":\(segment.endY)}}
+Lesson: {"type":"lesson","lesson":{"topic":"TOPIC","fullContent":"TEXT","startY":\(segment.startY),"endY":\(segment.endY)}}
+Neither: {"type":"neither"}
 
-Segment OCR Text:
-\(segmentOCRText)
+Types: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, other
 
-CRITICAL: Analyze ONLY this specific segment. Classify it as EITHER a lesson OR an exercise (or neither if it's just a title/header).
+---TEXT SEGMENT TO ANALYZE---
+\(truncatedText)
+---END TEXT SEGMENT---
 
-IMPORTANT HINT: If the text contains ANY questions, question marks, or asks the student to perform a task, it is almost ALWAYS an exercise, NOT a lesson.
-
-LESSON (theoretical content only):
-- Explanations, definitions, formulas, theorems, concepts
-- Solved examples WITH complete solutions already shown
-- Educational text that TEACHES (does NOT ask questions or request action)
-- Must be purely informational/instructional
-- NO question marks or imperatives
-
-EXERCISE (tasks for students):
-- Questions, problems, or tasks that ASK the student to do something
-- Has identifier (number/letter) AND requires student work
-- Contains question words: "Find", "Calculate", "Solve", "Show", "Prove", "Determine"
-- Contains instruction words: "Complete", "Fill in", "Draw", "Explain"
-- Contains question marks (?) or imperative verbs
-- Problems WITHOUT solutions (blank spaces for answers)
-- If it asks a question or requests an action → it's an EXERCISE, not a lesson
-
-NEITHER: Just titles, headers, page numbers, or decorative content
-
-Return ONLY valid JSON. IMPORTANT: Include ONLY the field that matches the type!
-
-If type is "lesson", return:
-{
-    "type": "lesson",
-    "lesson": {
-        "topic": "Brief topic",
-        "fullContent": "Complete text",
-        "startY": \(segment.startY),
-        "endY": \(segment.endY)
-    }
-}
-
-If type is "exercise", return:
-{
-    "type": "exercise",
-    "exercise": {
-        "exerciseNumber": "1",
-        "type": "mathematical",
-        "fullContent": "Complete text",
-        "startY": \(segment.startY),
-        "endY": \(segment.endY)
-    }
-}
-
-If type is "neither", return:
-{
-    "type": "neither"
-}
-
-Exercise types: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, diagram, other
-
-Use plain text for math (no LaTeX). Do NOT include both lesson and exercise fields.
+Return JSON only:
 """
 
                 do {
@@ -347,7 +333,7 @@ Use plain text for math (no LaTeX). Do NOT include both lesson and exercise fiel
             "lessons": [
                 {
                     "topic": "Brief topic description",
-                    "fullContent": "Complete lesson text",
+                    "fullContent": "Your cleaned-up and properly formatted understanding of the lesson content, with corrected OCR errors and proper mathematical notation",
                     "startY": 0.123,
                     "endY": 0.245
                 }
@@ -356,7 +342,7 @@ Use plain text for math (no LaTeX). Do NOT include both lesson and exercise fiel
                 {
                     "exerciseNumber": "1",
                     "type": "mathematical",
-                    "fullContent": "Complete exercise text",
+                    "fullContent": "Your cleaned-up and properly formatted understanding of the exercise text, with corrected OCR errors and clear problem statement",
                     "startY": 0.300,
                     "endY": 0.420
                 }
@@ -369,7 +355,11 @@ Use plain text for math (no LaTeX). Do NOT include both lesson and exercise fiel
         - Use precise Y coordinates from the OCR blocks
         - Ensure endY > startY for each item
         - Do not overlap content boundaries
-        - Include ALL relevant text in fullContent
+        - For fullContent: Provide YOUR interpretation and understanding of the text, not just raw OCR
+        - Fix any OCR errors or typos in fullContent
+        - Format mathematical expressions clearly in plain text
+        - Make the content clear and readable
+        - Preserve all important information
         - CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
         - Use plain text for math: write "x^2" not "x squared in LaTeX", write "x * y" or "x times y" not "x cdot y", write "(a+b)^2" not LaTeX notation.
         - Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.

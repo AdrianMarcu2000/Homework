@@ -491,6 +491,54 @@ Return JSON only:
         }
     }
 
+    /// Generates a concise summary of the homework analysis
+    ///
+    /// - Parameters:
+    ///   - analysisResult: The analysis result containing lessons and exercises
+    ///   - completion: Callback with the summary text
+    func generateHomeworkSummary(
+        for analysisResult: AnalysisResult,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        guard isModelAvailable else {
+            completion(.failure(AIAnalysisError.analysisUnavailable))
+            return
+        }
+
+        // Build a description of the content
+        let lessonsDesc = analysisResult.lessons.map { "- \($0.topic)" }.joined(separator: "\n")
+        let exercisesDesc = analysisResult.exercises.map { "- Exercise \($0.exerciseNumber): \($0.type)" }.joined(separator: "\n")
+
+        let prompt = """
+INSTRUCTIONS:
+Generate a brief, student-friendly summary (2-3 sentences) of this homework page.
+
+CONTENT FOUND:
+Lessons (\(analysisResult.lessons.count)):
+\(lessonsDesc.isEmpty ? "None" : lessonsDesc)
+
+Exercises (\(analysisResult.exercises.count)):
+\(exercisesDesc.isEmpty ? "None" : exercisesDesc)
+
+Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
+"""
+
+        Task {
+            do {
+                let response = try await session.respond(to: prompt)
+                let summary = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                await MainActor.run {
+                    completion(.success(summary))
+                }
+            } catch {
+                await MainActor.run {
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+
     /// Generates progressive hints for an exercise
     ///
     /// - Parameters:

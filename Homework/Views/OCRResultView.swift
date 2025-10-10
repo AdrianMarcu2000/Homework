@@ -46,7 +46,7 @@ struct OCRResultView: View {
                     OCRTextContentView(text: extractedText)
                 }
             }
-            .navigationTitle(isProcessing || isCloudAnalysisInProgress ? "Analyzing Image" : "Extracted Text")
+            .navigationTitle(isProcessing || isCloudAnalysisInProgress ? "Analyzing Image" : "Homework Summary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {

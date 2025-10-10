@@ -123,9 +123,15 @@ struct HomeworkRowView: View {
                         .italic()
                 }
 
-                Text(item.timestamp!, formatter: itemFormatter)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if let timestamp = item.timestamp {
+                    Text(timestamp, formatter: itemFormatter)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("No date")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Spacer()
@@ -255,9 +261,11 @@ struct HomeworkDetailView: View {
                     Text("Homework Details")
                         .font(.headline)
                         .fontWeight(.semibold)
-                    Text(item.timestamp!, formatter: itemFormatter)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if let timestamp = item.timestamp {
+                        Text(timestamp, formatter: itemFormatter)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         }

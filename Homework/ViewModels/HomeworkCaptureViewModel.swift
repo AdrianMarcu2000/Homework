@@ -144,7 +144,6 @@ class HomeworkCaptureViewModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
-                self.isProcessingOCR = false
                 self.analysisProgress = nil
 
                 switch result {
@@ -152,8 +151,27 @@ class HomeworkCaptureViewModel: ObservableObject {
                     print("DEBUG VM: Received analysis - Lessons: \(analysis.lessons.count), Exercises: \(analysis.exercises.count)")
                     self.analysisResult = analysis
 
+                    // Generate a summary of the homework instead of showing raw OCR text
+                    AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
+                        DispatchQueue.main.async {
+                            self.isProcessingOCR = false
+
+                            switch summaryResult {
+                            case .success(let summary):
+                                self.extractedText = summary
+                                print("DEBUG VM: Generated summary: \(summary)")
+
+                            case .failure(let error):
+                                print("DEBUG VM: Summary generation failed - \(error.localizedDescription)")
+                                // Fallback to a basic summary
+                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) and \(analysis.lessons.count) lesson(s) in this homework."
+                            }
+                        }
+                    }
+
                 case .failure(let error):
                     print("DEBUG VM: Analysis failed - \(error.localizedDescription)")
+                    self.isProcessingOCR = false
                     // Continue with just OCR text if AI analysis fails
                     break
                 }
@@ -250,6 +268,22 @@ class HomeworkCaptureViewModel: ObservableObject {
                 case .success(let analysis):
                     print("DEBUG CLOUD: Cloud analysis successful - Lessons: \(analysis.lessons.count), Exercises: \(analysis.exercises.count)")
                     self.analysisResult = analysis
+
+                    // Generate a summary for cloud analysis results
+                    AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
+                        DispatchQueue.main.async {
+                            switch summaryResult {
+                            case .success(let summary):
+                                self.extractedText = summary
+                                print("DEBUG CLOUD: Generated summary: \(summary)")
+
+                            case .failure(let error):
+                                print("DEBUG CLOUD: Summary generation failed - \(error.localizedDescription)")
+                                // Fallback to a basic summary
+                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) and \(analysis.lessons.count) lesson(s) in this homework."
+                            }
+                        }
+                    }
 
                 case .failure(let error):
                     print("DEBUG CLOUD: Cloud analysis failed - \(error.localizedDescription)")

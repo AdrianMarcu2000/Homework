@@ -8,12 +8,10 @@
 import SwiftUI
 import CoreData
 
-/// Navigation sections available in the app
-enum NavigationSection: String, CaseIterable, Identifiable {
+/// Navigation tabs available in the app
+enum AppTab: String, CaseIterable {
     case myHomework = "My Homework"
-    case classroom = "Google Classroom"
-
-    var id: String { rawValue }
+    case classroom = "Classroom"
 
     var icon: String {
         switch self {
@@ -54,8 +52,8 @@ private struct ContentViewInternal: View {
     /// View model managing homework capture state and logic
     @StateObject private var viewModel: HomeworkCaptureViewModel
 
-    /// Currently selected navigation section
-    @State private var selectedSection: NavigationSection? = .myHomework
+    /// Currently selected tab
+    @State private var selectedTab: AppTab = .myHomework
 
     /// Currently selected homework item for detail view
     @State private var selectedItem: Item?
@@ -66,37 +64,39 @@ private struct ContentViewInternal: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            // Sidebar with sections
-            List(NavigationSection.allCases, selection: $selectedSection) { section in
-                NavigationLink(value: section) {
-                    Label(section.rawValue, systemImage: section.icon)
+        NavigationView {
+            VStack(spacing: 0) {
+                // Tab selector at the top
+                Picker("Section", selection: $selectedTab) {
+                    ForEach(AppTab.allCases, id: \.self) { tab in
+                        Label(tab.rawValue, systemImage: tab.icon)
+                            .tag(tab)
+                    }
                 }
-            }
-            .navigationTitle("Homework")
-        } content: {
-            // Content area based on selected section
-            Group {
-                if selectedSection == .myHomework {
+                .pickerStyle(.segmented)
+                .padding()
+
+                // Content based on selected tab
+                if selectedTab == .myHomework {
                     HomeworkListView(
                         onTakePhoto: viewModel.selectCamera,
                         onChooseFromLibrary: viewModel.selectPhotoLibrary,
                         selectedItem: $selectedItem,
                         viewModel: viewModel
                     )
-                } else if selectedSection == .classroom {
+                } else {
                     GoogleClassroomView()
                 }
             }
             .environment(\.managedObjectContext, viewContext)
-        } detail: {
-            // Detail area
-            if selectedSection == .myHomework {
+
+            // Detail view
+            if selectedTab == .myHomework {
                 if let item = selectedItem {
                     HomeworkDetailView(item: item, viewModel: viewModel)
                         .environment(\.managedObjectContext, viewContext)
                 } else {
-                    // Empty state for My Homework
+                    // Empty state for homework
                     VStack(spacing: 16) {
                         Image(systemName: "doc.text.image")
                             .font(.system(size: 60))
@@ -112,7 +112,7 @@ private struct ContentViewInternal: View {
                     }
                 }
             } else {
-                // Empty state for Google Classroom
+                // Empty state for classroom
                 VStack(spacing: 16) {
                     Image(systemName: "graduationcap.circle")
                         .font(.system(size: 60))

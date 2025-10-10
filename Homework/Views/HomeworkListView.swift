@@ -167,6 +167,7 @@ struct HomeworkDetailView: View {
     let item: Item
     var viewModel: HomeworkCaptureViewModel
     @Environment(\.managedObjectContext) private var viewContext
+    @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
     @State private var selectedTab = 0
 
     var body: some View {
@@ -267,10 +268,13 @@ struct HomeworkDetailView: View {
                         Label("Re-analyze (Local)", systemImage: "arrow.clockwise")
                     }
 
-                    Button(action: {
-                        viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
-                    }) {
-                        Label("Re-analyze (Cloud)", systemImage: "cloud")
+                    // Only show cloud option if enabled in settings
+                    if useCloudAnalysis {
+                        Button(action: {
+                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
+                        }) {
+                            Label("Re-analyze (Cloud)", systemImage: "cloud")
+                        }
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise.circle")

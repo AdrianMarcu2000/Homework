@@ -11,6 +11,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var authService: BiometricAuthService
     @AppStorage("requireAuthentication") private var requireAuthentication = true
+    @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
 
     var body: some View {
         NavigationView {
@@ -58,6 +59,26 @@ struct SettingsView: View {
                     .disabled(!authService.isAuthenticated)
                 } footer: {
                     Text("When enabled, you'll need to authenticate with \(authService.biometricType().description) or your device passcode each time you open the app.")
+                }
+
+                Section {
+                    Toggle("Cloud Analysis", isOn: $useCloudAnalysis)
+
+                    HStack {
+                        Image(systemName: useCloudAnalysis ? "cloud.fill" : "iphone")
+                            .foregroundColor(useCloudAnalysis ? .blue : .gray)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(useCloudAnalysis ? "Using Cloud AI" : "Using On-Device AI")
+                                .font(.subheadline)
+                            Text(useCloudAnalysis ? "Advanced Gemini AI analysis" : "Apple Intelligence")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Homework Analysis")
+                } footer: {
+                    Text("Cloud analysis uses Google's Gemini AI for more detailed exercise detection and smarter input type suggestions. On-device analysis uses Apple Intelligence (requires iOS 18.1+).")
                 }
 
                 Section {

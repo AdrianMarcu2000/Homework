@@ -35,6 +35,9 @@ struct OCRResultView: View {
     /// Callback triggered when the user taps the Cloud Analysis button
     var onCloudAnalysis: (() -> Void)?
 
+    /// User setting for cloud analysis
+    @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+
     // MARK: - Body
 
     var body: some View {
@@ -55,8 +58,8 @@ struct OCRResultView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 12) {
-                        // Cloud Analysis button (only show when not processing and callback is provided)
-                        if !isProcessing && !extractedText.isEmpty, let cloudAction = onCloudAnalysis {
+                        // Cloud Analysis button (only show when cloud analysis is enabled in settings)
+                        if useCloudAnalysis && !isProcessing && !extractedText.isEmpty, let cloudAction = onCloudAnalysis {
                             Button(action: cloudAction) {
                                 HStack(spacing: 4) {
                                     if isCloudAnalysisInProgress {

@@ -233,7 +233,7 @@ struct ExerciseCard: View {
                 Button(action: { showSimilarExercises = true }) {
                     HStack {
                         Image(systemName: "sparkles")
-                        Text("Practice")
+                        Text("Practice with similar exercises")
                     }
                     .font(.subheadline)
                     .fontWeight(.medium)

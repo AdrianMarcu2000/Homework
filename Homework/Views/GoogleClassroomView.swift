@@ -14,6 +14,8 @@ struct GoogleClassroomView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    @Binding var selectedCourse: ClassroomCourse?
+
     var body: some View {
         Group {
             if authService.isSignedIn {
@@ -88,31 +90,29 @@ struct GoogleClassroomView: View {
             } else if courses.isEmpty {
                 emptyStateView
             } else {
-                List {
+                List(selection: $selectedCourse) {
                     ForEach(courses.filter { $0.isActive }) { course in
-                        NavigationLink(destination: CourseDetailView(course: course)) {
-                            CourseRow(course: course)
+                        CourseRow(course: course)
+                            .tag(course)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedCourse = course
+                            }
+                    }
+
+                    // Sign out button at the bottom
+                    Section {
+                        Button(role: .destructive, action: signOut) {
+                            HStack {
+                                Spacer()
+                                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                                Spacer()
+                            }
                         }
                     }
                 }
                 .refreshable {
                     loadCourses()
-                }
-            }
-        }
-        .navigationTitle("Classroom")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button(action: loadCourses) {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
-
-                    Button(role: .destructive, action: signOut) {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
@@ -204,6 +204,6 @@ struct CourseRow: View {
 
 #Preview {
     NavigationView {
-        GoogleClassroomView()
+        GoogleClassroomView(selectedCourse: .constant(nil))
     }
 }

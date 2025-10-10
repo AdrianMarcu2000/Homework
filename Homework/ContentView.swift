@@ -58,6 +58,9 @@ private struct ContentViewInternal: View {
     /// Currently selected homework item for detail view
     @State private var selectedItem: Item?
 
+    /// Currently selected classroom course
+    @State private var selectedCourse: ClassroomCourse?
+
     init() {
         // Initialize with a temporary context; will use environment context
         _viewModel = StateObject(wrappedValue: HomeworkCaptureViewModel(context: PersistenceController.shared.container.viewContext))
@@ -75,6 +78,14 @@ private struct ContentViewInternal: View {
                 }
                 .pickerStyle(.segmented)
                 .padding()
+                .onChange(of: selectedTab) { _, newTab in
+                    // Clear selections when switching tabs
+                    if newTab == .classroom {
+                        selectedItem = nil
+                    } else if newTab == .myHomework {
+                        selectedCourse = nil
+                    }
+                }
 
                 // Content based on selected tab
                 if selectedTab == .myHomework {
@@ -85,46 +96,54 @@ private struct ContentViewInternal: View {
                         viewModel: viewModel
                     )
                 } else {
-                    GoogleClassroomView()
+                    GoogleClassroomView(selectedCourse: $selectedCourse)
                 }
             }
             .environment(\.managedObjectContext, viewContext)
 
-            // Detail view
-            if selectedTab == .myHomework {
-                if let item = selectedItem {
-                    HomeworkDetailView(item: item, viewModel: viewModel)
-                        .environment(\.managedObjectContext, viewContext)
+            // Detail view - force refresh when tab changes
+            Group {
+                if selectedTab == .myHomework {
+                    if let item = selectedItem {
+                        HomeworkDetailView(item: item, viewModel: viewModel)
+                            .environment(\.managedObjectContext, viewContext)
+                    } else {
+                        // Empty state for homework
+                        VStack(spacing: 16) {
+                            Image(systemName: "doc.text.image")
+                                .font(.system(size: 60))
+                                .foregroundColor(.secondary)
+                            Text("Select a homework item")
+                                .font(.title2)
+                                .foregroundColor(.secondary)
+                            Text("or tap the camera/photo buttons to add new homework")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                    }
                 } else {
-                    // Empty state for homework
-                    VStack(spacing: 16) {
-                        Image(systemName: "doc.text.image")
-                            .font(.system(size: 60))
-                            .foregroundColor(.secondary)
-                        Text("Select a homework item")
-                            .font(.title2)
-                            .foregroundColor(.secondary)
-                        Text("or tap the camera/photo buttons to add new homework")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                    // Detail view for classroom
+                    if let course = selectedCourse {
+                        CourseDetailView(course: course)
+                    } else {
+                        // Empty state for classroom
+                        VStack(spacing: 16) {
+                            Image(systemName: "graduationcap.circle")
+                                .font(.system(size: 60))
+                                .foregroundColor(.secondary)
+                            Text("Select a course")
+                                .font(.title2)
+                                .foregroundColor(.secondary)
+                            Text("to view assignments")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
-            } else {
-                // Empty state for classroom
-                VStack(spacing: 16) {
-                    Image(systemName: "graduationcap.circle")
-                        .font(.system(size: 60))
-                        .foregroundColor(.secondary)
-                    Text("Select a course")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-                    Text("to view assignments")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
             }
+            .id(selectedTab)
         }
         .sheet(isPresented: $viewModel.showImagePicker) {
             ImagePicker(

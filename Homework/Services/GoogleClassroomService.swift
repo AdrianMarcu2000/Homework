@@ -69,7 +69,7 @@ class GoogleClassroomService {
 // MARK: - Data Models
 
 /// Google Classroom Course
-struct ClassroomCourse: Codable, Identifiable {
+struct ClassroomCourse: Codable, Identifiable, Hashable {
     let id: String
     let name: String
     let section: String?

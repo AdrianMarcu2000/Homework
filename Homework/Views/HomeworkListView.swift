@@ -74,7 +74,6 @@ struct HomeworkListView: View {
                 }
             }
         }
-        .navigationTitle("Homework")
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }

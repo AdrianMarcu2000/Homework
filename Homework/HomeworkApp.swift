@@ -38,6 +38,7 @@ struct HomeworkApp: App {
 struct RootView: View {
     @EnvironmentObject var authService: BiometricAuthService
     @Environment(\.scenePhase) private var scenePhase
+    @State private var hasRestoredGoogleSignIn = false
 
     var body: some View {
         ZStack {
@@ -52,6 +53,13 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.3), value: authService.isAuthenticated)
         .onChange(of: scenePhase) { oldPhase, newPhase in
             handleScenePhaseChange(newPhase)
+        }
+        .task {
+            // Restore Google Sign-In session on launch (only once)
+            if !hasRestoredGoogleSignIn {
+                hasRestoredGoogleSignIn = true
+                await restoreGoogleSignIn()
+            }
         }
     }
 
@@ -69,5 +77,11 @@ struct RootView: View {
         @unknown default:
             break
         }
+    }
+
+    /// Restore Google Sign-In session if user was previously signed in
+    @MainActor
+    private func restoreGoogleSignIn() async {
+        GoogleAuthService.shared.restorePreviousSignIn()
     }
 }

@@ -12,5 +12,16 @@
 	<string>This app needs access to the photo library to select homework images.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to securely access your homework and protect your academic data.</string>
+    <key>CFBundleURLTypes</key>
+      <array>
+          <dict>
+              <key>CFBundleTypeRole</key>
+              <string>Editor</string>
+              <key>CFBundleURLSchemes</key>
+              <array>
+                  <string>com.googleusercontent.apps.190405920069-macgciftprs07shg98ctcrnnpc4s2i16</string>
+              </array>
+          </dict>
+      </array>
 </dict>
 </plist>

@@ -8,11 +8,27 @@
 import SwiftUI
 import CoreData
 
+/// Navigation sections available in the app
+enum NavigationSection: String, CaseIterable, Identifiable {
+    case myHomework = "My Homework"
+    case classroom = "Google Classroom"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .myHomework: return "book.fill"
+        case .classroom: return "graduationcap.fill"
+        }
+    }
+}
+
 /// Main container view of the Homework app that orchestrates the presentation
 /// of child views and manages the homework capture workflow.
 ///
 /// This view follows the composite pattern by delegating responsibilities to:
 /// - `HomeworkListView`: Displays the list of homework items
+/// - `GoogleClassroomView`: Displays Google Classroom courses and assignments
 /// - `OCRResultView`: Shows OCR text extraction results
 /// - `ImagePicker`: Handles camera/photo library access
 /// - `HomeworkCaptureViewModel`: Manages business logic and state
@@ -38,6 +54,9 @@ private struct ContentViewInternal: View {
     /// View model managing homework capture state and logic
     @StateObject private var viewModel: HomeworkCaptureViewModel
 
+    /// Currently selected navigation section
+    @State private var selectedSection: NavigationSection? = .myHomework
+
     /// Currently selected homework item for detail view
     @State private var selectedItem: Item?
 
@@ -47,33 +66,63 @@ private struct ContentViewInternal: View {
     }
 
     var body: some View {
-        NavigationView {
-            HomeworkListView(
-                onTakePhoto: viewModel.selectCamera,
-                onChooseFromLibrary: viewModel.selectPhotoLibrary,
-                selectedItem: $selectedItem,
-                viewModel: viewModel
-            )
+        NavigationSplitView {
+            // Sidebar with sections
+            List(NavigationSection.allCases, selection: $selectedSection) { section in
+                NavigationLink(value: section) {
+                    Label(section.rawValue, systemImage: section.icon)
+                }
+            }
+            .navigationTitle("Homework")
+        } content: {
+            // Content area based on selected section
+            Group {
+                if selectedSection == .myHomework {
+                    HomeworkListView(
+                        onTakePhoto: viewModel.selectCamera,
+                        onChooseFromLibrary: viewModel.selectPhotoLibrary,
+                        selectedItem: $selectedItem,
+                        viewModel: viewModel
+                    )
+                } else if selectedSection == .classroom {
+                    GoogleClassroomView()
+                }
+            }
             .environment(\.managedObjectContext, viewContext)
-
-            // Main body content
-            if let item = selectedItem {
-                HomeworkDetailView(item: item, viewModel: viewModel)
-                    .environment(\.managedObjectContext, viewContext)
+        } detail: {
+            // Detail area
+            if selectedSection == .myHomework {
+                if let item = selectedItem {
+                    HomeworkDetailView(item: item, viewModel: viewModel)
+                        .environment(\.managedObjectContext, viewContext)
+                } else {
+                    // Empty state for My Homework
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text.image")
+                            .font(.system(size: 60))
+                            .foregroundColor(.secondary)
+                        Text("Select a homework item")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                        Text("or tap the camera/photo buttons to add new homework")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                }
             } else {
-                // Empty state
+                // Empty state for Google Classroom
                 VStack(spacing: 16) {
-                    Image(systemName: "doc.text.image")
+                    Image(systemName: "graduationcap.circle")
                         .font(.system(size: 60))
                         .foregroundColor(.secondary)
-                    Text("Select a homework item")
+                    Text("Select a course")
                         .font(.title2)
                         .foregroundColor(.secondary)
-                    Text("or tap the camera/photo buttons to add new homework")
+                    Text("to view assignments")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
                 }
             }
         }

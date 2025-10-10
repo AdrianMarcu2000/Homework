@@ -318,3 +318,186 @@ Using both the image and the OCR text with Y-coordinates, identify and segment e
     functions.logger.error(`Final error: ${lastError?.message || 'Unknown error'}`);
     res.status(500).send(`Failed to analyze document: ${lastError?.message || 'Unknown error occurred.'}`);
 });
+
+/**
+ * Verifies a student's answer to a homework exercise using Gemini AI.
+ *
+ * SECURITY: This function enforces Firebase App Check to verify requests come from legitimate app instances.
+ */
+export const verifyAnswer = functions.https.onRequest(async (req, res) => {
+    // Check for POST request
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed. Use POST.');
+        return;
+    }
+
+    // SECURITY: Verify App Check token
+    const appCheckToken = req.header('X-Firebase-AppCheck');
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+    if (!appCheckToken) {
+        functions.logger.warn('Request rejected: Missing App Check token');
+        res.status(401).send('Unauthorized: App Check token required.');
+        return;
+    }
+
+    functions.logger.info(`✅ App Check token received for answer verification`);
+
+    // Allow bypass token in emulator mode
+    if (isEmulator && appCheckToken === 'emulator-bypass-token') {
+        functions.logger.info('🔐 EMULATOR MODE: Using bypass token for local development');
+    }
+
+    // API Key
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        functions.logger.error("GEMINI_API_KEY environment variable not set.");
+        res.status(500).send('Server configuration error: API Key missing.');
+        return;
+    }
+
+    // Input validation
+    const { exerciseContent, exerciseSubject, answerType, answerText, answerImageBase64, answerImageMimeType } = req.body;
+
+    if (!exerciseContent || !answerType) {
+        res.status(400).send('Missing required parameters: exerciseContent or answerType.');
+        return;
+    }
+
+    // Validate we have answer data
+    if (answerType === 'canvas' && !answerImageBase64) {
+        res.status(400).send('Missing answerImageBase64 for canvas answer type.');
+        return;
+    }
+
+    if ((answerType === 'text' || answerType === 'inline') && !answerText) {
+        res.status(400).send('Missing answerText for text/inline answer type.');
+        return;
+    }
+
+    // System instruction for answer verification
+    const systemInstruction = `You are an expert teacher evaluating a student's homework answer. Your task is to:
+1. Carefully review the exercise question
+2. Analyze the student's answer
+3. Determine if the answer is correct, partially correct, or incorrect
+4. Provide constructive, encouraging feedback
+5. If incorrect, give helpful hints without revealing the full answer
+
+Be supportive and educational. Focus on understanding, not just correctness. For math problems, check the work shown, not just the final answer.`;
+
+    // Build the user prompt based on answer type
+    let userPrompt = `Exercise: ${exerciseContent}\n\n`;
+
+    if (exerciseSubject) {
+        userPrompt += `Subject: ${exerciseSubject}\n\n`;
+    }
+
+    const parts: any[] = [];
+
+    if (answerType === 'canvas') {
+        userPrompt += `The student's answer is shown in the attached image (their written work on a canvas).
+
+Please evaluate:
+1. Is the answer correct?
+2. Is the work shown clear and logical?
+3. Are there any mistakes in the process?
+
+Respond in JSON format with:
+{
+    "isCorrect": true/false,
+    "confidence": "high"/"medium"/"low",
+    "feedback": "A supportive message explaining the evaluation",
+    "suggestions": "Hints or guidance for improvement (if needed)"
+}`;
+
+        parts.push(
+            { text: userPrompt },
+            base64ToGenerativePart(answerImageBase64, answerImageMimeType || 'image/png')
+        );
+    } else {
+        userPrompt += `Student's answer: "${answerText}"\n\n`;
+        userPrompt += `Please evaluate if this answer is correct. Respond in JSON format with:
+{
+    "isCorrect": true/false,
+    "confidence": "high"/"medium"/"low",
+    "feedback": "A supportive message explaining the evaluation",
+    "suggestions": "Hints or guidance for improvement (if needed)"
+}`;
+
+        parts.push({ text: userPrompt });
+    }
+
+    // Construct the API payload
+    const model = "gemini-2.5-flash";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const payload = {
+        contents: [
+            {
+                role: "user",
+                parts: parts
+            }
+        ],
+        generationConfig: {
+            responseMimeType: "application/json"
+        },
+        systemInstruction: {
+            parts: [{ text: systemInstruction }]
+        }
+    };
+
+    // Call the API with retry logic
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
+
+    functions.logger.info(`🔍 Verifying ${answerType} answer for exercise`);
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+            const startTime = Date.now();
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const elapsed = Date.now() - startTime;
+            functions.logger.info(`⏱️  Verification completed in ${elapsed}ms with status ${response.status}`);
+
+            const result: any = await response.json();
+
+            if (!response.ok) {
+                throw new Error(`API returned status ${response.status}: ${JSON.stringify(result)}`);
+            }
+
+            const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!jsonText) {
+                throw new Error('LLM output content is missing.');
+            }
+
+            const verificationResult = JSON.parse(jsonText);
+
+            functions.logger.info(`✅ Verification complete - Correct: ${verificationResult.isCorrect}`);
+
+            // Return the verification result
+            res.status(200).json(verificationResult);
+            return;
+
+        } catch (error) {
+            lastError = error as Error;
+            functions.logger.warn(`❌ Verification attempt ${attempt + 1} failed: ${lastError.message}`);
+
+            if (attempt < MAX_RETRIES - 1) {
+                const delay = Math.pow(2, attempt) * 1000;
+                functions.logger.info(`⏳ Retrying in ${Math.round(delay / 1000)}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    // Final error response
+    functions.logger.error('💥 Failed to verify answer after retries.', lastError);
+    res.status(500).send(`Failed to verify answer: ${lastError?.message || 'Unknown error occurred.'}`);
+});

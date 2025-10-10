@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CoreData
+import PencilKit
 
 /// A view that displays analyzed exercises from homework
 struct LessonsAndExercisesView: View {
@@ -88,6 +89,10 @@ struct ExerciseCard: View {
     @State private var showSimilarExercises = false
     @State private var showHints = false
     @State private var canvasData: Data?
+    @State private var isVerifying = false
+    @State private var verificationResult: VerificationResult?
+    @State private var showVerificationResult = false
+    @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
 
     /// Computed property to get the cropped image for this exercise
     private var croppedExerciseImage: UIImage? {
@@ -206,50 +211,84 @@ struct ExerciseCard: View {
                 .foregroundColor(.primary)
 
             // Action buttons
-            HStack(spacing: 8) {
-                // Hints button
-                Button(action: { showHints = true }) {
-                    HStack {
-                        Image(systemName: "lightbulb.fill")
-                        Text("Give me a hint")
-                    }
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.yellow, Color.orange],
-                            startPoint: .leading,
-                            endPoint: .trailing
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    // Hints button
+                    Button(action: { showHints = true }) {
+                        HStack {
+                            Image(systemName: "lightbulb.fill")
+                            Text("Give me a hint")
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.yellow, Color.orange],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
-                    )
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
 
-                // Practice button
-                Button(action: { showSimilarExercises = true }) {
-                    HStack {
-                        Image(systemName: "sparkles")
-                        Text("Practice with similar exercises")
-                    }
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.green, Color.green.opacity(0.8)],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                    // Practice button
+                    Button(action: { showSimilarExercises = true }) {
+                        HStack {
+                            Image(systemName: "sparkles")
+                            Text("Practice")
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.green, Color.green.opacity(0.8)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
-                    )
-                    .cornerRadius(8)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+
+                // Verify Answer button (only show if cloud analysis is enabled)
+                if useCloudAnalysis {
+                    Button(action: verifyAnswer) {
+                        HStack {
+                            if isVerifying {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.8)
+                                Text("Verifying...")
+                            } else {
+                                Image(systemName: "checkmark.seal.fill")
+                                Text("Verify my answer")
+                            }
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.blue, Color.purple],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isVerifying)
+                }
             }
 
             // Answer input area based on inputType
@@ -270,6 +309,11 @@ struct ExerciseCard: View {
         }
         .sheet(isPresented: $showHints) {
             HintsView(exercise: exercise)
+        }
+        .sheet(isPresented: $showVerificationResult) {
+            if let result = verificationResult {
+                VerificationResultView(result: result)
+            }
         }
     }
 
@@ -294,6 +338,107 @@ struct ExerciseCard: View {
         case "canvas": return .blue
         case "both": return .purple
         default: return .gray
+        }
+    }
+
+    /// Verifies the student's answer using cloud AI
+    private func verifyAnswer() {
+        isVerifying = true
+
+        // Determine the answer type and extract the answer
+        let inputType = exercise.inputType ?? "canvas"
+        var answerText: String?
+        var canvasDrawing: PKDrawing?
+
+        // Extract answer based on input type
+        let key = "\(exercise.exerciseNumber)_\(exercise.startY)"
+
+        switch inputType {
+        case "inline":
+            // Get inline answer
+            let inlineKey = "\(key)_inline"
+            if let answers = homeworkItem.exerciseAnswers,
+               let savedData = answers[inlineKey],
+               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
+                answerText = text
+            }
+
+        case "text":
+            // Get text answer
+            let textKey = "\(key)_text"
+            if let answers = homeworkItem.exerciseAnswers,
+               let savedData = answers[textKey],
+               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
+                answerText = text
+            }
+
+        case "canvas":
+            // Get canvas drawing
+            if let savedData = canvasData,
+               let drawing = try? PKDrawing(data: savedData) {
+                canvasDrawing = drawing
+            }
+
+        case "both":
+            // Get both canvas and text
+            if let savedData = canvasData,
+               let drawing = try? PKDrawing(data: savedData) {
+                canvasDrawing = drawing
+            }
+            let textKey = "\(key)_text"
+            if let answers = homeworkItem.exerciseAnswers,
+               let savedData = answers[textKey],
+               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
+                answerText = text
+            }
+
+        default:
+            // Default to canvas
+            if let savedData = canvasData,
+               let drawing = try? PKDrawing(data: savedData) {
+                canvasDrawing = drawing
+            }
+        }
+
+        // Validate we have an answer
+        guard answerText != nil || canvasDrawing != nil else {
+            isVerifying = false
+            print("DEBUG VERIFY: No answer found for exercise \(exercise.exerciseNumber)")
+            // Could show an alert here
+            return
+        }
+
+        // Determine verification type (prefer canvas if available for "both")
+        let verificationType: String
+        if canvasDrawing != nil {
+            verificationType = "canvas"
+        } else {
+            verificationType = inputType == "inline" ? "inline" : "text"
+        }
+
+        print("DEBUG VERIFY: Verifying answer - Type: \(verificationType), Has text: \(answerText != nil), Has canvas: \(canvasDrawing != nil)")
+
+        // Call verification service
+        AnswerVerificationService.shared.verifyAnswer(
+            exercise: exercise,
+            answerType: verificationType,
+            answerText: answerText,
+            canvasDrawing: canvasDrawing
+        ) { [self] result in
+            DispatchQueue.main.async {
+                self.isVerifying = false
+
+                switch result {
+                case .success(let verificationResult):
+                    print("DEBUG VERIFY: Success - Correct: \(verificationResult.isCorrect)")
+                    self.verificationResult = verificationResult
+                    self.showVerificationResult = true
+
+                case .failure(let error):
+                    print("DEBUG VERIFY: Failed - \(error.localizedDescription)")
+                    // Could show error alert here
+                }
+            }
         }
     }
 }

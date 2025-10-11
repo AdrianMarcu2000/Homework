@@ -64,6 +64,31 @@ class GoogleClassroomService {
 
         return courseworkResponse.courseWork ?? []
     }
+
+    // MARK: - Drive File Download
+
+    /// Downloads a file from Google Drive
+    func downloadDriveFile(fileId: String) async throws -> Data {
+        let accessToken = try await GoogleAuthService.shared.getAccessToken()
+
+        // Use the Drive API export endpoint for images
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)?alt=media")!
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        print("📥 Downloading file from Google Drive: \(fileId)...")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw ClassroomError.apiError("Failed to download file")
+        }
+
+        print("✅ Downloaded \(data.count) bytes")
+
+        return data
+    }
 }
 
 // MARK: - Data Models

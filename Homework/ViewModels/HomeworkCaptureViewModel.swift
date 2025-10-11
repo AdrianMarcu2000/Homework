@@ -222,7 +222,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                     encoder.outputFormatting = .prettyPrinted
                     let jsonData = try encoder.encode(analysis)
                     if let jsonString = String(data: jsonData, encoding: .utf8) {
-                        item.analysis = jsonString
+                        item.analysisJSON = jsonString
                         print("DEBUG SAVE: Analysis JSON saved successfully")
                     }
                 } catch {

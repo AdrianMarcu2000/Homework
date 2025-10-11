@@ -8,45 +8,35 @@
 import Foundation
 import CoreData
 
-/// Extension to provide typed access to Item properties and helper methods
-extension Item {
-    /// Computed property to safely access analysisJSON
-    var analysis: String? {
-        get {
-            value(forKey: "analysisJSON") as? String
-        }
-        set {
-            setValue(newValue, forKey: "analysisJSON")
-        }
+/// Extension to make Item conform to AnalyzableHomework protocol
+extension Item: AnalyzableHomework {
+    public var id: String {
+        self.objectID.uriRepresentation().absoluteString
     }
 
-    /// Decodes and returns the AI analysis result from stored JSON
-    var analysisResult: AIAnalysisService.AnalysisResult? {
-        guard let jsonString = analysis,
-              let jsonData = jsonString.data(using: .utf8) else {
-            print("DEBUG DECODE: No analysis JSON found")
-            return nil
-        }
-
-        do {
-            let decoder = JSONDecoder()
-            let result = try decoder.decode(AIAnalysisService.AnalysisResult.self, from: jsonData)
-            print("DEBUG DECODE: Successfully decoded - Exercises: \(result.exercises.count)")
-            print("DEBUG DECODE: Exercise order from JSON:")
-            for (idx, ex) in result.exercises.enumerated() {
-                print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
+    public var title: String {
+        if let text = extractedText, !text.isEmpty {
+            // Return first line or truncated text
+            let lines = text.components(separatedBy: .newlines)
+            if let firstLine = lines.first, !firstLine.isEmpty {
+                return String(firstLine.prefix(50))
             }
-            return result
-        } catch {
-            print("DEBUG DECODE: Error decoding analysis result: \(error)")
-            return nil
         }
+        if let date = timestamp {
+            return "Homework from \(date.formatted(date: .abbreviated, time: .omitted))"
+        }
+        return "Homework"
     }
 
-    /// Computed property to store exercise answers (drawings)
-    var exerciseAnswers: [String: Data]? {
+    public var date: Date? {
+        timestamp
+    }
+
+    // AnalyzableHomework requires exerciseAnswers as [String: Data]?
+    // Core Data has exerciseAnswersData as Data
+    public var exerciseAnswers: [String: Data]? {
         get {
-            guard let data = value(forKey: "exerciseAnswersData") as? Data else {
+            guard let data = exerciseAnswersData else {
                 return nil
             }
             return try? JSONDecoder().decode([String: Data].self, from: data)
@@ -54,9 +44,9 @@ extension Item {
         set {
             if let newValue = newValue,
                let data = try? JSONEncoder().encode(newValue) {
-                setValue(data, forKey: "exerciseAnswersData")
+                exerciseAnswersData = data
             } else {
-                setValue(nil, forKey: "exerciseAnswersData")
+                exerciseAnswersData = nil
             }
         }
     }

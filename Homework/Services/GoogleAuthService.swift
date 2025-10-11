@@ -25,10 +25,11 @@ class GoogleAuthService: ObservableObject {
     private let clientID = "190405920069-macgciftprs07shg98ctcrnnpc4s2i16.apps.googleusercontent.com" // TODO: Replace with your Google Cloud OAuth client ID
 //    private let reversedClientID = "com.googleusercontent.apps.190405920069-macgciftprs07shg98ctcrnnpc4s2i16" 
 
-    // Required scopes for Google Classroom
+    // Required scopes for Google Classroom and Drive
     private let scopes = [
         "https://www.googleapis.com/auth/classroom.courses.readonly",
-        "https://www.googleapis.com/auth/classroom.coursework.me.readonly"
+        "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+        "https://www.googleapis.com/auth/drive.readonly"
     ]
 
     private init() {

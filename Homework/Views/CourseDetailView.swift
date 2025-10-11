@@ -13,6 +13,7 @@ struct CourseDetailView: View {
     @State private var coursework: [ClassroomCoursework] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var selectedAssignment: ClassroomAssignment?
 
     var body: some View {
         Group {
@@ -54,19 +55,30 @@ struct CourseDetailView: View {
     // MARK: - Assignments List
 
     private var assignmentsList: some View {
-        List {
-            ForEach(coursework.sorted(by: { (a, b) -> Bool in
-                // Sort by due date (most urgent first)
-                guard let dateA = a.dueDate?.date, let dateB = b.dueDate?.date else {
-                    return false
+        NavigationStack {
+            List {
+                ForEach(coursework.sorted(by: { (a, b) -> Bool in
+                    // Sort by due date (most urgent first)
+                    guard let dateA = a.dueDate?.date, let dateB = b.dueDate?.date else {
+                        return false
+                    }
+                    return dateA < dateB
+                })) { courseworkItem in
+                    NavigationLink {
+                        AssignmentDetailView(
+                            assignment: ClassroomAssignment(
+                                coursework: courseworkItem,
+                                courseName: course.name
+                            )
+                        )
+                    } label: {
+                        AssignmentRow(assignment: courseworkItem)
+                    }
                 }
-                return dateA < dateB
-            })) { assignment in
-                AssignmentRow(assignment: assignment)
             }
-        }
-        .refreshable {
-            loadCoursework()
+            .refreshable {
+                loadCoursework()
+            }
         }
     }
 

@@ -156,17 +156,6 @@ private struct ContentViewInternal: View {
                 viewModel.performOCR(on: image)
             }
         }
-        .sheet(isPresented: $viewModel.showTextSheet) {
-            OCRResultView(
-                extractedText: viewModel.extractedText,
-                isProcessing: viewModel.isProcessingOCR,
-                analysisProgress: viewModel.analysisProgress,
-                isCloudAnalysisInProgress: viewModel.isCloudAnalysisInProgress,
-                onSave: { viewModel.saveHomework(context: viewContext) },
-                onCancel: viewModel.dismissTextSheet,
-                onCloudAnalysis: viewModel.performCloudAnalysis
-            )
-        }
     }
 }
 

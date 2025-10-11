@@ -11,18 +11,46 @@ import CoreData
 /// A compact inline text input for fill-in-the-blank exercises
 struct InlineAnswerView: View {
     let exercise: AIAnalysisService.Exercise
-    let homeworkItem: Item
+    let homeworkItem: (any AnalyzableHomework)?
+    @Binding var exerciseAnswers: [String: Data]?
 
     @State private var answerText: String = ""
     @FocusState private var isFocused: Bool
 
+    // Convenience init for Item (backward compatibility)
     init(exercise: AIAnalysisService.Exercise, homeworkItem: Item) {
         self.exercise = exercise
         self.homeworkItem = homeworkItem
 
-        // Load existing answer if available
+        // Create a binding that reads from and writes to Item's exerciseAnswers
+        self._exerciseAnswers = Binding(
+            get: { homeworkItem.exerciseAnswers },
+            set: { newValue in
+                homeworkItem.exerciseAnswers = newValue
+                if let context = homeworkItem.managedObjectContext {
+                    try? context.save()
+                }
+            }
+        )
+
+        // Load existing answer
         let key = "\(exercise.exerciseNumber)_\(exercise.startY)_inline"
         if let answers = homeworkItem.exerciseAnswers,
+           let savedData = answers[key],
+           let text = String(data: savedData, encoding: .utf8) {
+            _answerText = State(initialValue: text)
+        }
+    }
+
+    // Generic init for any AnalyzableHomework (including ClassroomAssignment)
+    init(exercise: AIAnalysisService.Exercise, imageData: Data?, exerciseAnswers: Binding<[String: Data]?>) {
+        self.exercise = exercise
+        self.homeworkItem = nil
+        self._exerciseAnswers = exerciseAnswers
+
+        // Load existing answer if available
+        let key = "\(exercise.exerciseNumber)_\(exercise.startY)_inline"
+        if let answers = exerciseAnswers.wrappedValue,
            let savedData = answers[key],
            let savedText = String(data: savedData, encoding: .utf8) {
             _answerText = State(initialValue: savedText)
@@ -101,32 +129,22 @@ struct InlineAnswerView: View {
     }
 
     private func saveAnswer(_ text: String) {
-        guard let context = homeworkItem.managedObjectContext else { return }
+        // Get or create exercise answers dictionary
+        var answers = exerciseAnswers ?? [:]
 
-        context.perform {
-            // Get or create exercise answers dictionary
-            var answers = homeworkItem.exerciseAnswers ?? [:]
-
-            // Store the inline answer for this exercise (convert to Data)
-            let key = "\(exercise.exerciseNumber)_\(exercise.startY)_inline"
-            if text.isEmpty {
-                answers.removeValue(forKey: key)
-            } else {
-                // Convert string to Data for storage
-                if let textData = text.data(using: .utf8) {
-                    answers[key] = textData
-                }
-            }
-
-            // Save back to Core Data
-            homeworkItem.exerciseAnswers = answers
-
-            do {
-                try context.save()
-            } catch {
-                print("Error saving inline answer: \(error)")
+        // Store the inline answer for this exercise (convert to Data)
+        let key = "\(exercise.exerciseNumber)_\(exercise.startY)_inline"
+        if text.isEmpty {
+            answers.removeValue(forKey: key)
+        } else {
+            // Convert string to Data for storage
+            if let textData = text.data(using: .utf8) {
+                answers[key] = textData
             }
         }
+
+        // Update the binding (which will trigger save in the parent)
+        exerciseAnswers = answers
     }
 }
 

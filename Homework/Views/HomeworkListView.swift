@@ -231,14 +231,58 @@ struct HomeworkDetailView: View {
                             .padding(.vertical)
                         }
                     } else {
-                        VStack(spacing: 16) {
-                            Image(systemName: "pencil.circle.fill")
+                        // No analysis exists - show analyze options
+                        VStack(spacing: 20) {
+                            Image(systemName: "doc.text.magnifyingglass")
                                 .font(.system(size: 48))
                                 .foregroundColor(.secondary)
-                            Text("No Exercises")
+                            Text("No Analysis Yet")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
+
+                            // Show appropriate analyze button based on what's available
+                            if item.imageData != nil {
+                                // Has image - offer image analysis
+                                Button(action: {
+                                    viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: useCloudAnalysis)
+                                }) {
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "photo.badge.magnifyingglass")
+                                            .font(.title2)
+                                        Text("Analyze Image")
+                                            .font(.headline)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .frame(maxWidth: 200)
+                                    .background(Color.green)
+                                    .cornerRadius(10)
+                                }
+                            } else if let text = item.extractedText, !text.isEmpty {
+                                // No image but has text - offer text analysis
+                                Button(action: { analyzeTextOnly(text: text) }) {
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "text.magnifyingglass")
+                                            .font(.title2)
+                                        Text("Analyze Text")
+                                            .font(.headline)
+                                        Text("Extract exercises from text")
+                                            .font(.caption)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .frame(maxWidth: 250)
+                                    .background(Color.blue)
+                                    .cornerRadius(10)
+                                }
+                            } else {
+                                // No content to analyze
+                                Text("No content available to analyze")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                        .padding()
                     }
                 }
                 .tag(1)
@@ -280,6 +324,40 @@ struct HomeworkDetailView: View {
                     Image(systemName: "arrow.clockwise.circle")
                 }
                 .disabled(viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+            }
+        }
+    }
+
+    // MARK: - Text Analysis
+
+    /// Analyze text-only homework using AI (no image available)
+    private func analyzeTextOnly(text: String) {
+        print("🔍 Starting AI text analysis for local homework...")
+
+        // Use AI analysis service for text-only homework
+        AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let analysis):
+                    print("✅ Text analysis complete - Found \(analysis.exercises.count) exercises")
+
+                    // Save the analysis
+                    do {
+                        let encoder = JSONEncoder()
+                        encoder.outputFormatting = .prettyPrinted
+                        let jsonData = try encoder.encode(analysis)
+                        if let jsonString = String(data: jsonData, encoding: .utf8) {
+                            self.item.analysisJSON = jsonString
+                            try self.viewContext.save()
+                            print("✅ Text-only analysis saved to Core Data")
+                        }
+                    } catch {
+                        print("❌ Error saving text-only analysis: \(error)")
+                    }
+
+                case .failure(let error):
+                    print("❌ Text analysis failed: \(error.localizedDescription)")
+                }
             }
         }
     }

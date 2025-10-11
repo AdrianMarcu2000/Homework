@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CoreData
+import PencilKit
 
 /// View for displaying and analyzing a Google Classroom assignment
 struct AssignmentDetailView: View {
@@ -16,6 +17,7 @@ struct AssignmentDetailView: View {
     @State private var analysisError: String?
     @State private var analysisProgress: (current: Int, total: Int)?
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+    @State private var didTriggerAutoAnalysis = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -126,25 +128,71 @@ struct AssignmentDetailView: View {
                             .padding(.vertical)
                         }
                     } else {
-                        VStack(spacing: 16) {
-                            Image(systemName: "pencil.circle.fill")
+                        // No analysis exists - show analyze options
+                        VStack(spacing: 20) {
+                            Image(systemName: "doc.text.magnifyingglass")
                                 .font(.system(size: 48))
                                 .foregroundColor(.secondary)
-                            Text("No Exercises")
+                            Text("No Analysis Yet")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
-                            if assignment.imageData != nil && assignment.analysisJSON == nil {
+
+                            // Show appropriate analyze button based on what's available
+                            if assignment.imageData != nil {
+                                // Has image - offer image analysis
                                 Button(action: { analyzeAssignment() }) {
-                                    Text("Analyze Image")
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                        .padding()
-                                        .frame(maxWidth: 200)
-                                        .background(Color.green)
-                                        .cornerRadius(10)
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "photo.badge.magnifyingglass")
+                                            .font(.title2)
+                                        Text("Analyze Image")
+                                            .font(.headline)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .frame(maxWidth: 200)
+                                    .background(Color.green)
+                                    .cornerRadius(10)
                                 }
+                            } else if let description = assignment.coursework.description, !description.isEmpty {
+                                // No image but has text - offer text analysis
+                                Button(action: { analyzeTextOnly(text: description) }) {
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "text.magnifyingglass")
+                                            .font(.title2)
+                                        Text("Analyze Text")
+                                            .font(.headline)
+                                        Text("Extract exercises from description")
+                                            .font(.caption)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .frame(maxWidth: 250)
+                                    .background(Color.blue)
+                                    .cornerRadius(10)
+                                }
+                            } else if assignment.firstImageMaterial != nil {
+                                // Has image attachment but not downloaded
+                                Button(action: downloadAndAnalyze) {
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "arrow.down.circle")
+                                            .font(.title2)
+                                        Text("Download & Analyze")
+                                            .font(.headline)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .frame(maxWidth: 200)
+                                    .background(Color.blue)
+                                    .cornerRadius(10)
+                                }
+                            } else {
+                                // No content to analyze
+                                Text("No content available to analyze")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
                             }
                         }
+                        .padding()
                     }
                 }
                 .tag(1)
@@ -181,6 +229,24 @@ struct AssignmentDetailView: View {
                         Image(systemName: "arrow.clockwise.circle")
                     }
                     .disabled(isAnalyzing)
+                }
+            }
+        }
+        .onAppear {
+            guard !didTriggerAutoAnalysis else { return }
+            didTriggerAutoAnalysis = true
+
+            if isAnalyzing {
+                return
+            }
+
+            if assignment.analysisResult == nil || assignment.analysisResult?.exercises.isEmpty == true {
+                if assignment.imageData != nil {
+                    analyzeAssignment()
+                } else if assignment.firstImageMaterial != nil {
+                    downloadAndAnalyze()
+                } else if let description = assignment.coursework.description, !description.isEmpty {
+                    analyzeTextOnly(text: description)
                 }
             }
         }
@@ -296,6 +362,36 @@ struct AssignmentDetailView: View {
             print("❌ Error encoding analysis: \(error)")
         }
     }
+
+    // MARK: - Text Analysis
+
+    /// Analyze text-only assignment using AI (no image available)
+    private func analyzeTextOnly(text: String) {
+        isAnalyzing = true
+        analysisError = nil
+
+        // Store the original text as extractedText
+        assignment.extractedText = text
+
+        print("🔍 Starting AI text analysis...")
+
+        // Use AI analysis service for text-only homework
+        AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
+            DispatchQueue.main.async {
+                isAnalyzing = false
+
+                switch result {
+                case .success(let analysis):
+                    print("✅ Text analysis complete - Found \(analysis.exercises.count) exercises")
+                    saveAnalysisResult(analysis)
+
+                case .failure(let error):
+                    print("❌ Text analysis failed: \(error.localizedDescription)")
+                    analysisError = error.localizedDescription
+                }
+            }
+        }
+    }
 }
 
 /// Exercise card for classroom assignments
@@ -343,6 +439,46 @@ private struct ExerciseCardContent: View {
 
         let key = "\(exercise.exerciseNumber)_\(exercise.startY)"
         _canvasData = State(initialValue: exerciseAnswers.wrappedValue?[key])
+    }
+
+    /// Computed view that returns the appropriate input method based on exercise type
+    @ViewBuilder
+    private var answerInputView: some View {
+        let inputType = exercise.inputType ?? "canvas" // default to canvas if not specified
+        let isMath = exercise.subject == "mathematics"
+
+        switch inputType {
+        case "inline":
+            // Inline fill-in-the-blank input
+            InlineAnswerView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers)
+
+        case "text":
+            // Simple text input for short answers
+            TextAnswerView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers)
+
+        case "canvas":
+            // Canvas for showing work - use math notebook style for math
+            if isMath {
+                MathNotebookCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
+            } else {
+                DrawingCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
+            }
+
+        case "both":
+            // Both canvas and text input
+            VStack(spacing: 12) {
+                if isMath {
+                    MathNotebookCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
+                } else {
+                    DrawingCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
+                }
+                TextAnswerView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers)
+            }
+
+        default:
+            // Fallback to canvas
+            DrawingCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
+        }
     }
 
     var body: some View {
@@ -404,39 +540,73 @@ private struct ExerciseCardContent: View {
                 .foregroundColor(.primary)
 
             // Action buttons (hints and practice)
-            HStack(spacing: 8) {
-                Button(action: { showHints = true }) {
-                    HStack {
-                        Image(systemName: "lightbulb.fill")
-                        Text("Hint")
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Button(action: { showHints = true }) {
+                        HStack {
+                            Image(systemName: "lightbulb.fill")
+                            Text("Give me a hint")
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(LinearGradient(colors: [.yellow, .orange], startPoint: .leading, endPoint: .trailing))
+                        .cornerRadius(8)
                     }
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(LinearGradient(colors: [.yellow, .orange], startPoint: .leading, endPoint: .trailing))
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
+                    .buttonStyle(.plain)
 
-                Button(action: { showSimilarExercises = true }) {
-                    HStack {
-                        Image(systemName: "sparkles")
-                        Text("Practice")
+                    Button(action: { showSimilarExercises = true }) {
+                        HStack {
+                            Image(systemName: "sparkles")
+                            Text("Practice")
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .leading, endPoint: .trailing))
+                        .cornerRadius(8)
                     }
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .leading, endPoint: .trailing))
-                    .cornerRadius(8)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+
+                // Verify Answer button (only show if cloud analysis is enabled)
+                if useCloudAnalysis {
+                    Button(action: verifyAnswer) {
+                        HStack {
+                            if isVerifying {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.8)
+                                Text("Verifying...")
+                            } else {
+                                Image(systemName: "checkmark.seal.fill")
+                                Text("Verify my answer")
+                            }
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isVerifying)
+                }
             }
 
-            // Note: Answer input is read-only for classroom assignments (no saving to classroom)
+            // Answer input area based on inputType
+            Divider()
+                .padding(.vertical, 4)
+
+            answerInputView
+
+            // Note: Answers are stored locally for classroom assignments
             Text("Note: This is a Google Classroom assignment. Answers are stored locally and not submitted to Classroom.")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -454,6 +624,112 @@ private struct ExerciseCardContent: View {
         }
         .sheet(isPresented: $showHints) {
             HintsView(exercise: exercise)
+        }
+        .sheet(isPresented: $showVerificationResult) {
+            if let result = verificationResult {
+                VerificationResultView(result: result)
+            }
+        }
+    }
+
+    // MARK: - Helper Functions
+
+    /// Verifies the student's answer using cloud AI
+    private func verifyAnswer() {
+        isVerifying = true
+
+        // Determine the answer type and extract the answer
+        let inputType = exercise.inputType ?? "canvas"
+        var answerText: String?
+        var canvasDrawing: PKDrawing?
+
+        // Extract answer based on input type
+        let key = "\(exercise.exerciseNumber)_\(exercise.startY)"
+
+        switch inputType {
+        case "inline":
+            // Get inline answer
+            let inlineKey = "\(key)_inline"
+            if let answers = exerciseAnswers,
+               let savedData = answers[inlineKey],
+               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
+                answerText = text
+            }
+
+        case "text":
+            // Get text answer
+            let textKey = "\(key)_text"
+            if let answers = exerciseAnswers,
+               let savedData = answers[textKey],
+               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
+                answerText = text
+            }
+
+        case "canvas":
+            // Get canvas drawing
+            if let savedData = canvasData,
+               let drawing = try? PKDrawing(data: savedData) {
+                canvasDrawing = drawing
+            }
+
+        case "both":
+            // Get both canvas and text
+            if let savedData = canvasData,
+               let drawing = try? PKDrawing(data: savedData) {
+                canvasDrawing = drawing
+            }
+            let textKey = "\(key)_text"
+            if let answers = exerciseAnswers,
+               let savedData = answers[textKey],
+               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
+                answerText = text
+            }
+
+        default:
+            // Default to canvas
+            if let savedData = canvasData,
+               let drawing = try? PKDrawing(data: savedData) {
+                canvasDrawing = drawing
+            }
+        }
+
+        // Validate we have an answer
+        guard answerText != nil || canvasDrawing != nil else {
+            isVerifying = false
+            print("DEBUG VERIFY: No answer found for exercise \(exercise.exerciseNumber)")
+            return
+        }
+
+        // Determine verification type (prefer canvas if available for "both")
+        let verificationType: String
+        if canvasDrawing != nil {
+            verificationType = "canvas"
+        } else {
+            verificationType = inputType == "inline" ? "inline" : "text"
+        }
+
+        print("DEBUG VERIFY: Verifying answer - Type: \(verificationType), Has text: \(answerText != nil), Has canvas: \(canvasDrawing != nil)")
+
+        // Call verification service
+        AnswerVerificationService.shared.verifyAnswer(
+            exercise: exercise,
+            answerType: verificationType,
+            answerText: answerText,
+            canvasDrawing: canvasDrawing
+        ) { [self] result in
+            DispatchQueue.main.async {
+                self.isVerifying = false
+
+                switch result {
+                case .success(let verificationResult):
+                    print("DEBUG VERIFY: Success - Correct: \(verificationResult.isCorrect)")
+                    self.verificationResult = verificationResult
+                    self.showVerificationResult = true
+
+                case .failure(let error):
+                    print("DEBUG VERIFY: Failed - \(error.localizedDescription)")
+                }
+            }
         }
     }
 

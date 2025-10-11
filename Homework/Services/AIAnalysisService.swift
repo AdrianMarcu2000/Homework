@@ -464,6 +464,134 @@ Return JSON only:
         }
     }
 
+    /// Analyzes text-only homework (no image) to identify and extract exercises
+    ///
+    /// - Parameters:
+    ///   - text: The homework text to analyze
+    ///   - completion: Callback with the analysis result or error
+    func analyzeTextOnly(
+        text: String,
+        completion: @escaping (Result<AnalysisResult, Error>) -> Void
+    ) {
+        guard isModelAvailable else {
+            completion(.failure(AIAnalysisError.analysisUnavailable))
+            return
+        }
+
+        let prompt = """
+INSTRUCTIONS:
+You are an educational content analyzer. Analyze the provided text to identify ALL exercises.
+
+EXERCISE DETECTION RULES:
+- Numbered items (1., 2., a., b., Exercise 1:, Problem 1:, etc.) = EXERCISE
+- Questions with question words: "Find", "Calculate", "Solve", "Show", "Prove", "Determine", "Explain"
+- Instructions with imperative verbs: "Complete", "Fill in", "Draw", "Write", "Expand"
+- Questions ending with "?" or containing question patterns
+- When the text contains multiple paragraphs with different exercises, separate them
+
+SKIP (not exercises):
+- Pure headers or titles without actual questions/tasks
+- Descriptive text without any task or question
+
+For each exercise, identify:
+- exerciseNumber: The number/identifier (e.g., "1", "a", "Exercise 3")
+- type: Choose from: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, other
+- fullContent: Clean, properly formatted text of the exercise with OCR errors corrected
+- subject: The subject area (mathematics, language, science, history, etc.) or null if unclear
+- inputType: How the student should answer - "text" for written answers, "canvas" for drawing/diagrams, "both" if mixed
+
+IMPORTANT:
+- Return ONLY valid JSON. Do not include any explanatory text before or after the JSON.
+- CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
+- Use plain text for math: write "x^2" not LaTeX, write "x * y" not "x cdot y"
+- Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.
+
+Return a JSON object with this exact structure:
+{
+    "exercises": [
+        {
+            "exerciseNumber": "1",
+            "type": "mathematical",
+            "fullContent": "Solve for x: 2x + 5 = 15",
+            "subject": "mathematics",
+            "inputType": "text"
+        }
+    ]
+}
+
+---TEXT TO ANALYZE---
+\(text)
+---END TEXT---
+
+Return ONLY valid JSON:
+"""
+
+        Task {
+            do {
+                let response = try await session.respond(to: prompt)
+
+                print("DEBUG TEXT ANALYSIS: AI Response:")
+                print(response.content)
+
+                let jsonString = extractJSON(from: response.content)
+
+                print("DEBUG TEXT ANALYSIS: Extracted JSON:")
+                print(jsonString)
+
+                guard let data = jsonString.data(using: .utf8) else {
+                    await MainActor.run {
+                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1))))
+                    }
+                    return
+                }
+
+                // Parse the response - but it won't have Y coordinates
+                // We need to handle this by adding fake Y coordinates for compatibility
+                struct TextAnalysisResult: Codable {
+                    let exercises: [TextExercise]
+                }
+
+                struct TextExercise: Codable {
+                    let exerciseNumber: String
+                    let type: String
+                    let fullContent: String
+                    let subject: String?
+                    let inputType: String?
+                }
+
+                let decoder = JSONDecoder()
+                let textResult = try decoder.decode(TextAnalysisResult.self, from: data)
+
+                // Convert to Exercise format with fake Y coordinates
+                let exercises = textResult.exercises.enumerated().map { index, textEx in
+                    let yPosition = Double(index) * 0.1
+                    return Exercise(
+                        exerciseNumber: textEx.exerciseNumber,
+                        type: textEx.type,
+                        fullContent: textEx.fullContent,
+                        startY: yPosition,
+                        endY: yPosition + 0.05,
+                        subject: textEx.subject,
+                        inputType: textEx.inputType ?? "text"
+                    )
+                }
+
+                let finalResult = AnalysisResult(exercises: exercises)
+
+                print("DEBUG TEXT ANALYSIS: Found \(exercises.count) exercises")
+
+                await MainActor.run {
+                    completion(.success(finalResult))
+                }
+            } catch {
+                print("DEBUG TEXT ANALYSIS: Error - \(error.localizedDescription)")
+                await MainActor.run {
+                    completion(.failure(AIAnalysisError.parsingFailed(error)))
+                }
+            }
+        }
+    }
+
     /// Generates a concise summary of the homework analysis
     ///
     /// - Parameters:
@@ -599,15 +727,15 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
     private func extractJSON(from text: String) -> String {
         var jsonString = text
 
-        // Try to find JSON array boundaries first
-        if let startIndex = text.firstIndex(of: "["),
-           let endIndex = text.lastIndex(of: "]") {
+        // Try to find JSON object boundaries first (more common for structured responses)
+        if let startIndex = text.firstIndex(of: "{"),
+           let endIndex = text.lastIndex(of: "}") {
             let jsonRange = startIndex...endIndex
             jsonString = String(text[jsonRange])
         }
-        // Try to find JSON object boundaries
-        else if let startIndex = text.firstIndex(of: "{"),
-                let endIndex = text.lastIndex(of: "}") {
+        // Try to find JSON array boundaries
+        else if let startIndex = text.firstIndex(of: "["),
+                let endIndex = text.lastIndex(of: "]") {
             let jsonRange = startIndex...endIndex
             jsonString = String(text[jsonRange])
         }

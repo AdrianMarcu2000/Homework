@@ -12,8 +12,35 @@ import CoreData
 /// A view that provides a drawing canvas for Apple Pencil input
 struct DrawingCanvasView: View {
     let exercise: AIAnalysisService.Exercise
-    let homeworkItem: Item
+    let homeworkItem: (any AnalyzableHomework)?
+    @Binding var exerciseAnswers: [String: Data]?
     @Binding var canvasData: Data?
+
+    // Convenience init for Item (backward compatibility)
+    init(exercise: AIAnalysisService.Exercise, homeworkItem: Item, canvasData: Binding<Data?>) {
+        self.exercise = exercise
+        self.homeworkItem = homeworkItem
+        self._canvasData = canvasData
+
+        // Create a binding that reads from and writes to Item's exerciseAnswers
+        self._exerciseAnswers = Binding(
+            get: { homeworkItem.exerciseAnswers },
+            set: { newValue in
+                homeworkItem.exerciseAnswers = newValue
+                if let context = homeworkItem.managedObjectContext {
+                    try? context.save()
+                }
+            }
+        )
+    }
+
+    // Generic init for any AnalyzableHomework (including ClassroomAssignment)
+    init(exercise: AIAnalysisService.Exercise, imageData: Data?, exerciseAnswers: Binding<[String: Data]?>, canvasData: Binding<Data?>) {
+        self.exercise = exercise
+        self.homeworkItem = nil
+        self._exerciseAnswers = exerciseAnswers
+        self._canvasData = canvasData
+    }
 
     @State private var canvas = PKCanvasView()
     @State private var isExpanded = false
@@ -43,7 +70,7 @@ struct DrawingCanvasView: View {
                 canvas: $canvas,
                 canvasData: $canvasData,
                 exercise: exercise,
-                homeworkItem: homeworkItem
+                exerciseAnswers: $exerciseAnswers
             )
             .frame(height: isExpanded ? 400 : 200)
             .background(Color.white)
@@ -88,7 +115,7 @@ struct CanvasRepresentable: UIViewRepresentable {
     @Binding var canvas: PKCanvasView
     @Binding var canvasData: Data?
     let exercise: AIAnalysisService.Exercise
-    let homeworkItem: Item
+    @Binding var exerciseAnswers: [String: Data]?
 
     func makeUIView(context: Context) -> PKCanvasView {
         canvas.drawingPolicy = .anyInput
@@ -139,24 +166,14 @@ struct CanvasRepresentable: UIViewRepresentable {
     }
 
     private func saveDrawing(data: Data?) {
-        guard let context = homeworkItem.managedObjectContext else { return }
+        // Get or create exercise answers dictionary
+        var answers = exerciseAnswers ?? [:]
 
-        context.perform {
-            // Get or create exercise answers dictionary
-            var answers = homeworkItem.exerciseAnswers ?? [:]
+        // Store the drawing data for this exercise
+        let key = "\(exercise.exerciseNumber)_\(exercise.startY)"
+        answers[key] = data
 
-            // Store the drawing data for this exercise
-            let key = "\(exercise.exerciseNumber)_\(exercise.startY)"
-            answers[key] = data
-
-            // Save back to Core Data
-            homeworkItem.exerciseAnswers = answers
-
-            do {
-                try context.save()
-            } catch {
-                print("Error saving drawing: \(error)")
-            }
-        }
+        // Update the binding (which will trigger save in the parent)
+        exerciseAnswers = answers
     }
 }

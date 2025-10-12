@@ -348,11 +348,13 @@ class HomeworkCaptureViewModel: ObservableObject {
                             case .success(let summary):
                                 self.extractedText = summary
                                 print("DEBUG REANALYZE: Generated summary: \(summary)")
+                                self.saveHomework(context: context)
 
                             case .failure(let error):
                                 print("DEBUG REANALYZE: Summary generation failed - \(error.localizedDescription)")
                                 // Fallback to a basic summary
                                 self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
+                                self.saveHomework(context: context)
                             }
                         }
                     }
@@ -401,11 +403,13 @@ class HomeworkCaptureViewModel: ObservableObject {
                             case .success(let summary):
                                 self.extractedText = summary
                                 print("DEBUG REANALYZE CLOUD: Generated summary: \(summary)")
+                                self.saveHomework(context: context)
 
                             case .failure(let error):
                                 print("DEBUG REANALYZE CLOUD: Summary generation failed - \(error.localizedDescription)")
                                 // Fallback to a basic summary
                                 self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
+                                self.saveHomework(context: context)
                             }
                         }
                     }
@@ -474,3 +478,4 @@ class HomeworkCaptureViewModel: ObservableObject {
         }
     }
 }
+

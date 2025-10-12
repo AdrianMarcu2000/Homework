@@ -346,7 +346,7 @@ struct HomeworkDetailView: View {
                         isReanalyzing = true
                         viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
                     }) {
-                        Label("Local", systemImage: "arrow.clockwise")
+                        Label("Local", systemImage: "brain.head.profile")
                             .labelStyle(.iconOnly)
                     }
                     .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
@@ -357,7 +357,7 @@ struct HomeworkDetailView: View {
                             isReanalyzing = true
                             viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
                         }) {
-                            Label("Cloud", systemImage: "cloud")
+                            Label("Cloud", systemImage: "sparkles")
                                 .labelStyle(.iconOnly)
                         }
                         .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)

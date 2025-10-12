@@ -14,6 +14,7 @@ struct AssignmentDetailView: View {
     @StateObject var assignment: ClassroomAssignment
     @State private var selectedTab = 0
     @State private var isAnalyzing = false
+    @State private var isReanalyzing = false
     @State private var analysisError: String?
     @State private var analysisProgress: (current: Int, total: Int)?
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
@@ -224,22 +225,33 @@ struct AssignmentDetailView: View {
                 if assignment.imageData != nil {
                     HStack(spacing: 12) {
                         // Local reanalyze button
-                        Button(action: { analyzeAssignment(useCloud: false) }) {
-                            Label("Local", systemImage: "arrow.clockwise")
+                        Button(action: {
+                            isReanalyzing = true
+                            analyzeAssignment(useCloud: false)
+                        }) {
+                            Label("Local", systemImage: "brain.head.profile")
                                 .labelStyle(.iconOnly)
                         }
-                        .disabled(isAnalyzing)
+                        .disabled(isReanalyzing || isAnalyzing)
 
                         // Cloud reanalyze button (only show if enabled in settings)
                         if useCloudAnalysis {
-                            Button(action: { analyzeAssignment(useCloud: true) }) {
-                                Label("Cloud", systemImage: "cloud")
+                            Button(action: {
+                                isReanalyzing = true
+                                analyzeAssignment(useCloud: true)
+                            }) {
+                                Label("Cloud", systemImage: "sparkles")
                                     .labelStyle(.iconOnly)
                             }
-                            .disabled(isAnalyzing)
+                            .disabled(isReanalyzing || isAnalyzing)
                         }
                     }
                 }
+            }
+        }
+        .onChange(of: isAnalyzing) { _, newValue in
+            if !newValue {
+                isReanalyzing = false
             }
         }
         .onAppear {

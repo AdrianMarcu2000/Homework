@@ -12,7 +12,6 @@ import PencilKit
 /// View for displaying and analyzing a Google Classroom assignment
 struct AssignmentDetailView: View {
     @StateObject var assignment: ClassroomAssignment
-    @State private var selectedTab = 0
     @State private var isAnalyzing = false
     @State private var isReanalyzing = false
     @State private var analysisError: String?
@@ -21,193 +20,241 @@ struct AssignmentDetailView: View {
     @State private var didTriggerAutoAnalysis = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Custom tab buttons
-            HStack(spacing: 0) {
-                TabButton(title: "Image", icon: "photo", isSelected: selectedTab == 0) {
-                    selectedTab = 0
-                }
-                TabButton(title: "Exercises", icon: "pencil.circle.fill", isSelected: selectedTab == 1) {
-                    selectedTab = 1
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-            .background(Color(UIColor.systemBackground))
+        VStack(spacing: 0) {
+            if isAnalyzing || assignment.isDownloadingImage {
+                // Show progress indicator during download or analysis
+                VStack(spacing: 16) {
+                    Spacer()
 
-            // Tab content
-            TabView(selection: $selectedTab) {
-                // Image Tab
-                Group {
                     if assignment.isDownloadingImage {
-                        VStack(spacing: 16) {
-                            ProgressView()
-                            Text("Downloading image...")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                    } else if let imageData = assignment.imageData,
-                              let uiImage = UIImage(data: imageData) {
-                        ScrollView {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFit()
-                                .cornerRadius(12)
-                                .shadow(radius: 5)
-                                .padding()
-                        }
-                    } else if assignment.firstImageMaterial != nil {
-                        // Has image but not downloaded yet
-                        VStack(spacing: 16) {
-                            Image(systemName: "arrow.down.circle")
-                                .font(.system(size: 48))
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Downloading image...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 8)
+                    } else if let progress = analysisProgress {
+                        ProgressView(value: Double(progress.current), total: Double(progress.total))
+                            .progressViewStyle(.linear)
+                            .frame(maxWidth: 300)
+                        Text("Analyzing segment \(progress.current) of \(progress.total)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Analyzing assignment...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 8)
+                    }
+
+                    Spacer()
+                }
+            } else if let analysis = assignment.analysisResult, !analysis.exercises.isEmpty {
+                // Show exercises directly
+                VStack(spacing: 0) {
+                    // Action buttons at the top
+                    HStack(spacing: 12) {
+                        // View Original button - show image or text
+                        if assignment.imageData != nil {
+                            // Has image - show image viewer
+                            NavigationLink(destination: AssignmentImageView(assignment: assignment)) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "photo.fill")
+                                        .font(.title2)
+                                    Text("View Original")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.blue.opacity(0.1))
                                 .foregroundColor(.blue)
+                                .cornerRadius(10)
+                            }
+                            .buttonStyle(.plain)
+                        } else if assignment.extractedText != nil || assignment.coursework.description != nil {
+                            // No image but has text - show text viewer
+                            NavigationLink(destination: AssignmentTextView(assignment: assignment)) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "doc.text.fill")
+                                        .font(.title2)
+                                    Text("View Original")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundColor(.blue)
+                                .cornerRadius(10)
+                            }
+                            .buttonStyle(.plain)
+                        }
 
-                            Text("Image available")
-                                .font(.headline)
+                        // Analyze with Apple Intelligence button - always show
+                        Button(action: {
+                            isReanalyzing = true
+                            if assignment.imageData != nil {
+                                analyzeAssignment(useCloud: false)
+                            } else if let text = assignment.extractedText {
+                                analyzeTextOnly(text: text)
+                            }
+                        }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: "apple.logo")
+                                    .font(.title2)
+                                Text("Apple AI")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.purple.opacity(0.1))
+                            .foregroundColor(.purple)
+                            .cornerRadius(10)
+                        }
+                        .disabled(isReanalyzing || isAnalyzing || assignment.isDownloadingImage)
 
-                            Button(action: downloadAndAnalyze) {
-                                Text("Download & Analyze")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .frame(maxWidth: 200)
-                                    .background(Color.blue)
-                                    .cornerRadius(10)
+                        // Analyze with Google Gemini button - show when cloud analysis is enabled
+                        if useCloudAnalysis {
+                            Button(action: {
+                                isReanalyzing = true
+                                if assignment.imageData != nil {
+                                    analyzeAssignment(useCloud: true)
+                                }
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "cloud.fill")
+                                        .font(.title2)
+                                    Text("Google AI")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.green.opacity(0.1))
+                                .foregroundColor(.green)
+                                .cornerRadius(10)
+                            }
+                            .disabled(isReanalyzing || isAnalyzing || assignment.isDownloadingImage || assignment.imageData == nil)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                    Divider()
+
+                    // Exercises content
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            // Summary card
+                            SummaryCard(
+                                icon: "pencil.circle.fill",
+                                title: "Exercises",
+                                count: analysis.exercises.count,
+                                color: .green
+                            )
+                            .padding(.horizontal)
+
+                            // Exercises
+                            Text("✏️ Exercises")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal)
+
+                            ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
+                                ClassroomExerciseCard(exercise: exercise, assignment: assignment)
+                                    .padding(.horizontal)
                             }
                         }
+                        .padding(.vertical)
+                    }
+                    .id(assignment.analysisJSON ?? "")
+                }
+            } else {
+                // No analysis exists - show analyze options
+                VStack(spacing: 20) {
+                    Spacer()
+
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("No Analysis Yet")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+
+                    // Show appropriate analyze button based on what's available
+                    if assignment.imageData != nil {
+                        // Has image - offer image analysis
+                        Button(action: { analyzeAssignment() }) {
+                            VStack(spacing: 8) {
+                                Image(systemName: "photo.badge.magnifyingglass")
+                                    .font(.title2)
+                                Text("Analyze Image")
+                                    .font(.headline)
+                            }
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: 200)
+                            .background(Color.green)
+                            .cornerRadius(10)
+                        }
+                    } else if let description = assignment.coursework.description, !description.isEmpty {
+                        // No image but has text - offer text analysis
+                        Button(action: { analyzeTextOnly(text: description) }) {
+                            VStack(spacing: 8) {
+                                Image(systemName: "text.magnifyingglass")
+                                    .font(.title2)
+                                Text("Analyze Text")
+                                    .font(.headline)
+                                Text("Extract exercises from description")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: 250)
+                            .background(Color.blue)
+                            .cornerRadius(10)
+                        }
+                    } else if assignment.firstImageMaterial != nil {
+                        // Has image attachment but not downloaded
+                        Button(action: downloadAndAnalyze) {
+                            VStack(spacing: 8) {
+                                Image(systemName: "arrow.down.circle")
+                                    .font(.title2)
+                                Text("Download & Analyze")
+                                    .font(.headline)
+                            }
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: 200)
+                            .background(Color.blue)
+                            .cornerRadius(10)
+                        }
                     } else {
-                        VStack(spacing: 16) {
-                            Image(systemName: "photo")
-                                .font(.system(size: 48))
-                                .foregroundColor(.secondary)
-                            Text("No Image Attachment")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                            Text(assignment.coursework.description ?? "")
+                        // No content to analyze
+                        Text("No content available to analyze")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        if let description = assignment.coursework.description, !description.isEmpty {
+                            Text(description)
                                 .font(.body)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding()
                         }
                     }
+
+                    Spacer()
                 }
-                .tag(0)
-
-                // Exercises Tab
-                Group {
-                    if isAnalyzing {
-                        VStack(spacing: 16) {
-                            Spacer()
-
-                            if let progress = analysisProgress {
-                                ProgressView(value: Double(progress.current), total: Double(progress.total))
-                                    .progressViewStyle(.linear)
-                                    .frame(maxWidth: 300)
-                                Text("Analyzing segment \(progress.current) of \(progress.total)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            } else {
-                                ProgressView()
-                                    .scaleEffect(1.5)
-                                Text("Analyzing assignment...")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .padding(.top, 8)
-                            }
-
-                            Spacer()
-                        }
-                    } else if let analysis = assignment.analysisResult, !analysis.exercises.isEmpty {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 20) {
-                                Text("✏️ Exercises")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .padding(.horizontal)
-
-                                ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
-                                    ClassroomExerciseCard(exercise: exercise, assignment: assignment)
-                                        .padding(.horizontal)
-                                }
-                            }
-                            .padding(.vertical)
-                        }
-                        .id(assignment.analysisJSON ?? "")
-                    } else {
-                        // No analysis exists - show analyze options
-                        VStack(spacing: 20) {
-                            Image(systemName: "doc.text.magnifyingglass")
-                                .font(.system(size: 48))
-                                .foregroundColor(.secondary)
-                            Text("No Analysis Yet")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-
-                            // Show appropriate analyze button based on what's available
-                            if assignment.imageData != nil {
-                                // Has image - offer image analysis
-                                Button(action: { analyzeAssignment() }) {
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "photo.badge.magnifyingglass")
-                                            .font(.title2)
-                                        Text("Analyze Image")
-                                            .font(.headline)
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .frame(maxWidth: 200)
-                                    .background(Color.green)
-                                    .cornerRadius(10)
-                                }
-                            } else if let description = assignment.coursework.description, !description.isEmpty {
-                                // No image but has text - offer text analysis
-                                Button(action: { analyzeTextOnly(text: description) }) {
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "text.magnifyingglass")
-                                            .font(.title2)
-                                        Text("Analyze Text")
-                                            .font(.headline)
-                                        Text("Extract exercises from description")
-                                            .font(.caption)
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .frame(maxWidth: 250)
-                                    .background(Color.blue)
-                                    .cornerRadius(10)
-                                }
-                            } else if assignment.firstImageMaterial != nil {
-                                // Has image attachment but not downloaded
-                                Button(action: downloadAndAnalyze) {
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "arrow.down.circle")
-                                            .font(.title2)
-                                        Text("Download & Analyze")
-                                            .font(.headline)
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .frame(maxWidth: 200)
-                                    .background(Color.blue)
-                                    .cornerRadius(10)
-                                }
-                            } else {
-                                // No content to analyze
-                                Text("No content available to analyze")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding()
-                    }
-                }
-                .tag(1)
+                .padding()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
         }
-        .navigationTitle("Assignment")
+        .navigationTitle("Exercises")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -221,33 +268,6 @@ struct AssignmentDetailView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if assignment.imageData != nil {
-                    HStack(spacing: 12) {
-                        // Local reanalyze button
-                        Button(action: {
-                            isReanalyzing = true
-                            analyzeAssignment(useCloud: false)
-                        }) {
-                            Label("Local", systemImage: "brain.head.profile")
-                                .labelStyle(.iconOnly)
-                        }
-                        .disabled(isReanalyzing || isAnalyzing)
-
-                        // Cloud reanalyze button (only show if enabled in settings)
-                        if useCloudAnalysis {
-                            Button(action: {
-                                isReanalyzing = true
-                                analyzeAssignment(useCloud: true)
-                            }) {
-                                Label("Cloud", systemImage: "sparkles")
-                                    .labelStyle(.iconOnly)
-                            }
-                            .disabled(isReanalyzing || isAnalyzing)
-                        }
-                    }
-                }
-            }
         }
         .onChange(of: isAnalyzing) { _, newValue in
             if !newValue {
@@ -258,7 +278,7 @@ struct AssignmentDetailView: View {
             guard !didTriggerAutoAnalysis else { return }
             didTriggerAutoAnalysis = true
 
-            if isAnalyzing {
+            if isAnalyzing || assignment.isDownloadingImage {
                 return
             }
 
@@ -432,6 +452,102 @@ struct AssignmentDetailView: View {
     }
 }
 
+// MARK: - Supporting Views
+
+/// Summary card showing count of items
+private struct SummaryCard: View {
+    let icon: String
+    let title: String
+    let count: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(color)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(count)")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.1))
+        .cornerRadius(12)
+    }
+}
+
+/// A simple view to display the assignment image
+private struct AssignmentImageView: View {
+    @ObservedObject var assignment: ClassroomAssignment
+
+    var body: some View {
+        ScrollView {
+            if let imageData = assignment.imageData,
+               let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .cornerRadius(12)
+                    .shadow(radius: 5)
+                    .padding()
+            } else {
+                VStack(spacing: 16) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("No Image")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+            }
+        }
+        .navigationTitle("Image")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A simple view to display the assignment original text
+private struct AssignmentTextView: View {
+    @ObservedObject var assignment: ClassroomAssignment
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Show assignment description if available
+                if let description = assignment.coursework.description, !description.isEmpty {
+                    Text(description)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                        .padding()
+                } else {
+                    // Empty state
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No Text Available")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding()
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("Original")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 /// Exercise card for classroom assignments
 private struct ClassroomExerciseCard: View {
     let exercise: AIAnalysisService.Exercise
@@ -446,58 +562,6 @@ private struct ClassroomExerciseCard: View {
                 set: { assignment.exerciseAnswers = $0; assignment.saveToCache() }
             )
         )
-    }
-}
-
-/// Custom tab button (reused from HomeworkListView)
-private struct TabButton: View {
-    let title: String
-    let icon: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-            }
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background {
-                if isSelected {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 30, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                        RoundedRectangle(cornerRadius: 30, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.2), Color.white.opacity(0.05)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                        RoundedRectangle(cornerRadius: 30, style: .continuous)
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.3), Color.white.opacity(0.1)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 0.5
-                            )
-                    }
-                    .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
     }
 }
 

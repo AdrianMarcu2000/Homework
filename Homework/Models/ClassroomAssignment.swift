@@ -10,7 +10,7 @@ import UIKit
 import Combine
 
 /// A wrapper around ClassroomCoursework that can be analyzed like homework
-class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework {
+class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, Hashable {
     let coursework: ClassroomCoursework
     let courseName: String
 
@@ -143,6 +143,16 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework {
 
         // Force synchronize to ensure write completes immediately
         defaults.synchronize()
+    }
+
+    // MARK: - Hashable
+
+    static func == (lhs: ClassroomAssignment, rhs: ClassroomAssignment) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }
 

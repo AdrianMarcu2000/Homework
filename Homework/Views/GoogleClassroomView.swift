@@ -8,20 +8,23 @@
 import SwiftUI
 import GoogleSignIn
 
-/// View for Google Classroom integration
+/// View for Google Classroom integration with tree structure navigation
 struct GoogleClassroomView: View {
     @StateObject private var authService = GoogleAuthService.shared
     @State private var courses: [ClassroomCourse] = []
+    @State private var courseworkByID: [String: [ClassroomCoursework]] = [:]
+    @State private var expandedCourses: Set<String> = []
     @State private var isLoading = false
     @State private var errorMessage: String?
 
     @Binding var selectedCourse: ClassroomCourse?
+    @Binding var selectedAssignment: ClassroomAssignment?
 
     var body: some View {
         Group {
             if authService.isSignedIn {
-                // Show courses list
-                coursesListView
+                // Show courses tree
+                coursesTreeView
             } else {
                 // Show sign-in prompt
                 signInPromptView
@@ -82,13 +85,13 @@ struct GoogleClassroomView: View {
         }
     }
 
-    // MARK: - Courses List View
+    // MARK: - Courses Tree View
 
-    private var coursesListView: some View {
+    private var coursesTreeView: some View {
         VStack(spacing: 0) {
             // Main content area
             Group {
-                if isLoading {
+                if isLoading && courses.isEmpty {
                     VStack {
                         Spacer()
                         ProgressView("Loading courses...")
@@ -101,16 +104,22 @@ struct GoogleClassroomView: View {
                         Spacer()
                     }
                 } else {
-                    List(selection: $selectedCourse) {
+                    List(selection: $selectedAssignment) {
                         ForEach(courses.filter { $0.isActive }) { course in
-                            CourseRow(course: course)
-                                .tag(course)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    selectedCourse = course
+                            CourseSection(
+                                course: course,
+                                isExpanded: expandedCourses.contains(course.id),
+                                coursework: courseworkByID[course.id] ?? [],
+                                onToggle: {
+                                    toggleCourse(course)
+                                },
+                                onSelectAssignment: { assignment in
+                                    selectedAssignment = assignment
                                 }
+                            )
                         }
                     }
+                    .listStyle(.sidebar)
                     .refreshable {
                         loadCourses()
                     }
@@ -190,6 +199,8 @@ struct GoogleClassroomView: View {
     private func signOut() {
         authService.signOut()
         courses = []
+        courseworkByID = [:]
+        expandedCourses = []
     }
 
     private func loadCourses() {
@@ -207,37 +218,159 @@ struct GoogleClassroomView: View {
             }
         }
     }
+
+    private func toggleCourse(_ course: ClassroomCourse) {
+        if expandedCourses.contains(course.id) {
+            expandedCourses.remove(course.id)
+        } else {
+            expandedCourses.insert(course.id)
+            // Load coursework if not already loaded
+            if courseworkByID[course.id] == nil {
+                loadCoursework(for: course)
+            }
+        }
+    }
+
+    private func loadCoursework(for course: ClassroomCourse) {
+        Task {
+            do {
+                let coursework = try await GoogleClassroomService.shared.fetchCoursework(for: course.id)
+                await MainActor.run {
+                    courseworkByID[course.id] = coursework
+                }
+            } catch {
+                print("❌ Failed to load coursework for \(course.name): \(error)")
+            }
+        }
+    }
 }
 
-// MARK: - Course Row
+// MARK: - Course Section (Disclosure Group)
 
-struct CourseRow: View {
+struct CourseSection: View {
+    let course: ClassroomCourse
+    let isExpanded: Bool
+    let coursework: [ClassroomCoursework]
+    let onToggle: () -> Void
+    let onSelectAssignment: (ClassroomAssignment) -> Void
+
+    var body: some View {
+        DisclosureGroup(
+            isExpanded: Binding(
+                get: { isExpanded },
+                set: { _ in onToggle() }
+            )
+        ) {
+            // Coursework items
+            if coursework.isEmpty {
+                HStack {
+                    Image(systemName: "checkmark.circle")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                    Text("No assignments")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.leading, 20)
+            } else {
+                ForEach(coursework.sorted(by: { (a, b) -> Bool in
+                    // Sort by due date (most urgent first)
+                    guard let dateA = a.dueDate?.date, let dateB = b.dueDate?.date else {
+                        return false
+                    }
+                    return dateA < dateB
+                })) { assignment in
+                    Button(action: {
+                        onSelectAssignment(ClassroomAssignment(
+                            coursework: assignment,
+                            courseName: course.name
+                        ))
+                    }) {
+                        AssignmentRowCompact(assignment: assignment)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        } label: {
+            CourseRowCompact(course: course)
+        }
+    }
+}
+
+// MARK: - Compact Course Row
+
+struct CourseRowCompact: View {
     let course: ClassroomCourse
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(course.name)
-                .font(.headline)
+        HStack(spacing: 8) {
+            Image(systemName: "book.circle.fill")
+                .foregroundColor(.blue)
+                .font(.title3)
 
-            if let section = course.section, !section.isEmpty {
-                Text(section)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(course.name)
+                    .font(.headline)
 
-            if let description = course.descriptionHeading, !description.isEmpty {
-                Text(description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
+                if let section = course.section, !section.isEmpty {
+                    Text(section)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         }
         .padding(.vertical, 4)
     }
 }
 
+// MARK: - Compact Assignment Row
+
+struct AssignmentRowCompact: View {
+    let assignment: ClassroomCoursework
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .foregroundColor(.green)
+                .font(.body)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(assignment.title)
+                    .font(.subheadline)
+                    .lineLimit(1)
+
+                if let dueDate = assignment.dueDate?.date {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.caption2)
+                        Text("Due \(dueDate, formatter: compactDateFormatter)")
+                            .font(.caption2)
+                    }
+                    .foregroundColor(dueDate < Date() ? .red : .secondary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 2)
+        .padding(.leading, 20)
+    }
+}
+
+// MARK: - Formatters
+
+private let compactDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .short
+    formatter.timeStyle = .none
+    return formatter
+}()
+
 #Preview {
     NavigationView {
-        GoogleClassroomView(selectedCourse: .constant(nil))
+        GoogleClassroomView(
+            selectedCourse: .constant(nil),
+            selectedAssignment: .constant(nil)
+        )
     }
 }

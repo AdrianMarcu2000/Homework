@@ -61,6 +61,9 @@ private struct ContentViewInternal: View {
     /// Currently selected classroom course
     @State private var selectedCourse: ClassroomCourse?
 
+    /// Currently selected classroom assignment
+    @State private var selectedAssignment: ClassroomAssignment?
+
     init() {
         // Initialize with a temporary context; will use environment context
         _viewModel = StateObject(wrappedValue: HomeworkCaptureViewModel(context: PersistenceController.shared.container.viewContext))
@@ -84,6 +87,7 @@ private struct ContentViewInternal: View {
                         selectedItem = nil
                     } else if newTab == .myHomework {
                         selectedCourse = nil
+                        selectedAssignment = nil
                     }
                 }
 
@@ -96,7 +100,10 @@ private struct ContentViewInternal: View {
                         viewModel: viewModel
                     )
                 } else {
-                    GoogleClassroomView(selectedCourse: $selectedCourse)
+                    GoogleClassroomView(
+                        selectedCourse: $selectedCourse,
+                        selectedAssignment: $selectedAssignment
+                    )
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
@@ -106,7 +113,7 @@ private struct ContentViewInternal: View {
             Group {
                 if selectedTab == .myHomework {
                     if let item = selectedItem {
-                        HomeworkDetailView(item: item, viewModel: viewModel)
+                        HomeworkExercisesDetailView(item: item, viewModel: viewModel)
                             .environment(\.managedObjectContext, viewContext)
                     } else {
                         // Empty state for homework
@@ -126,18 +133,18 @@ private struct ContentViewInternal: View {
                     }
                 } else {
                     // Detail view for classroom
-                    if let course = selectedCourse {
-                        CourseDetailView(course: course)
+                    if let assignment = selectedAssignment {
+                        AssignmentDetailView(assignment: assignment)
                     } else {
                         // Empty state for classroom
                         VStack(spacing: 16) {
                             Image(systemName: "graduationcap.circle")
                                 .font(.system(size: 60))
                                 .foregroundColor(.secondary)
-                            Text("Select a course")
+                            Text("Select an assignment")
                                 .font(.title2)
                                 .foregroundColor(.secondary)
-                            Text("to view assignments")
+                            Text("from a course to view exercises")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
@@ -159,6 +166,332 @@ private struct ContentViewInternal: View {
         }
     }
 }
+
+/// A simplified detail view that shows exercises directly without intermediate tabs
+private struct HomeworkExercisesDetailView: View {
+    let item: Item
+    var viewModel: HomeworkCaptureViewModel
+    @Environment(\.managedObjectContext) private var viewContext
+    @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+    @State private var isReanalyzing = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress {
+                // Show progress indicator during reanalysis
+                VStack(spacing: 16) {
+                    Spacer()
+
+                    if let progress = viewModel.analysisProgress {
+                        ProgressView(value: Double(progress.current), total: Double(progress.total))
+                            .progressViewStyle(.linear)
+                            .frame(maxWidth: 300)
+                        Text("Analyzing segment \(progress.current) of \(progress.total)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text(viewModel.isCloudAnalysisInProgress ? "Analyzing with cloud AI..." : "Analyzing homework...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 8)
+                    }
+
+                    Spacer()
+                }
+            } else if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
+                VStack(spacing: 0) {
+                    // Action buttons at the top
+                    HStack(spacing: 12) {
+                        // View Original button - show image or text
+                        if item.imageData != nil {
+                            // Has image - show image viewer
+                            NavigationLink(destination: HomeworkImageView(item: item)) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "photo.fill")
+                                        .font(.title2)
+                                    Text("View Original")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundColor(.blue)
+                                .cornerRadius(10)
+                            }
+                            .buttonStyle(.plain)
+                        } else if item.extractedText != nil && !(item.extractedText?.isEmpty ?? true) {
+                            // No image but has text - show text viewer
+                            NavigationLink(destination: HomeworkTextView(item: item)) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "doc.text.fill")
+                                        .font(.title2)
+                                    Text("View Original")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundColor(.blue)
+                                .cornerRadius(10)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        // Analyze with Apple Intelligence button
+                        Button(action: {
+                            isReanalyzing = true
+                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
+                        }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: "apple.logo")
+                                    .font(.title2)
+                                Text("Apple AI")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.purple.opacity(0.1))
+                            .foregroundColor(.purple)
+                            .cornerRadius(10)
+                        }
+                        .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+
+                        // Analyze with Google Gemini button
+                        if useCloudAnalysis {
+                            Button(action: {
+                                isReanalyzing = true
+                                viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "cloud.fill")
+                                        .font(.title2)
+                                    Text("Google AI")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.green.opacity(0.1))
+                                .foregroundColor(.green)
+                                .cornerRadius(10)
+                            }
+                            .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                    Divider()
+
+                    // Exercises content
+                    ScrollView {
+                        LessonsAndExercisesView(analysis: analysis, homeworkItem: item)
+                            .padding()
+                    }
+                    .id(item.analysisJSON ?? "")
+                }
+            } else {
+                // No analysis exists - show analyze options
+                VStack(spacing: 20) {
+                    Spacer()
+
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("No Analysis Yet")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+
+                    // Show appropriate analyze button based on what's available
+                    if item.imageData != nil {
+                        // Has image - offer image analysis
+                        Button(action: {
+                            isReanalyzing = true
+                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: useCloudAnalysis)
+                        }) {
+                            VStack(spacing: 8) {
+                                Image(systemName: "photo.badge.magnifyingglass")
+                                    .font(.title2)
+                                Text("Analyze Image")
+                                    .font(.headline)
+                            }
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: 200)
+                            .background(Color.green)
+                            .cornerRadius(10)
+                        }
+                    } else if let text = item.extractedText, !text.isEmpty {
+                        // No image but has text - offer text analysis
+                        Button(action: { analyzeTextOnly(text: text) }) {
+                            VStack(spacing: 8) {
+                                Image(systemName: "text.magnifyingglass")
+                                    .font(.title2)
+                                Text("Analyze Text")
+                                    .font(.headline)
+                                Text("Extract exercises from text")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: 250)
+                            .background(Color.blue)
+                            .cornerRadius(10)
+                        }
+                    } else {
+                        // No content to analyze
+                        Text("No content available to analyze")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding()
+            }
+        }
+        .navigationTitle("Exercises")
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: viewModel.isProcessingOCR) { _, newValue in
+            if !newValue && !viewModel.isCloudAnalysisInProgress {
+                isReanalyzing = false
+            }
+        }
+        .onChange(of: viewModel.isCloudAnalysisInProgress) { _, newValue in
+            if !newValue && !viewModel.isProcessingOCR {
+                isReanalyzing = false
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 2) {
+                    Text("Exercises")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    if let timestamp = item.timestamp {
+                        Text(timestamp, formatter: itemFormatter)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Text Analysis
+
+    /// Analyze text-only homework using AI (no image available)
+    private func analyzeTextOnly(text: String) {
+        print("🔍 Starting AI text analysis for local homework...")
+
+        // Use AI analysis service for text-only homework
+        AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let analysis):
+                    print("✅ Text analysis complete - Found \(analysis.exercises.count) exercises")
+
+                    // Save the analysis
+                    do {
+                        let encoder = JSONEncoder()
+                        encoder.outputFormatting = .prettyPrinted
+                        let jsonData = try encoder.encode(analysis)
+                        if let jsonString = String(data: jsonData, encoding: .utf8) {
+                            self.item.analysisJSON = jsonString
+                            try self.viewContext.save()
+                            print("✅ Text-only analysis saved to Core Data")
+                        }
+                    } catch {
+                        print("❌ Error saving text-only analysis: \(error)")
+                    }
+
+                case .failure(let error):
+                    print("❌ Text analysis failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+}
+
+/// A simple view to display the homework image
+private struct HomeworkImageView: View {
+    let item: Item
+
+    var body: some View {
+        ScrollView {
+            if let imageData = item.imageData,
+               let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .cornerRadius(12)
+                    .shadow(radius: 5)
+                    .padding()
+            } else {
+                VStack(spacing: 16) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("No Image")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+            }
+        }
+        .navigationTitle("Image")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A simple view to display the homework original text
+private struct HomeworkTextView: View {
+    let item: Item
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Show extracted text if available
+                if let extractedText = item.extractedText, !extractedText.isEmpty {
+                    Text(extractedText)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                        .padding()
+                } else {
+                    // Empty state
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No Text Available")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding()
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("Original")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Date formatter used to display homework item timestamps
+private let itemFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .short
+    formatter.timeStyle = .medium
+    return formatter
+}()
 
 // MARK: - Previews
 

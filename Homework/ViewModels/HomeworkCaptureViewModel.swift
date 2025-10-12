@@ -354,7 +354,6 @@ class HomeworkCaptureViewModel: ObservableObject {
                                 print("DEBUG REANALYZE: Summary generation failed - \(error.localizedDescription)")
                                 // Fallback to a basic summary
                                 self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
-                                self.saveHomework(context: context)
                             }
                         }
                     }
@@ -409,7 +408,6 @@ class HomeworkCaptureViewModel: ObservableObject {
                                 print("DEBUG REANALYZE CLOUD: Summary generation failed - \(error.localizedDescription)")
                                 // Fallback to a basic summary
                                 self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
-                                self.saveHomework(context: context)
                             }
                         }
                     }

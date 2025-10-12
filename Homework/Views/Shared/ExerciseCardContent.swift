@@ -16,7 +16,10 @@ struct ExerciseCardContent: View {
     let imageData: Data?
     @Binding var exerciseAnswers: [String: Data]?
     @State private var showSimilarExercises = false
-    @State private var showHints = false
+    @State private var hints: [AIAnalysisService.Hint] = []
+    @State private var revealedHintIndex: Int = -1
+    @State private var isLoadingHints = false
+    @State private var hintsErrorMessage: String?
     @State private var canvasData: Data?
     @State private var isVerifying = false
     @State private var verificationResult: VerificationResult?
@@ -148,10 +151,16 @@ struct ExerciseCardContent: View {
             // Action buttons (hints and practice)
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    Button(action: { showHints = true }) {
+                    Button(action: { 
+                        if hints.isEmpty && !isLoadingHints {
+                            generateHints()
+                        } else if !hints.isEmpty {
+                            revealNextHint()
+                        }
+                    }) {
                         HStack {
                             Image(systemName: "lightbulb.fill")
-                            Text("Give me a hint")
+                            Text(hints.isEmpty ? "Get Hints" : (revealedHintIndex < hints.count - 1 ? "Next Hint" : "All Hints Shown"))
                         }
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -162,6 +171,7 @@ struct ExerciseCardContent: View {
                         .cornerRadius(8)
                     }
                     .buttonStyle(.plain)
+                    .disabled(isLoadingHints || (revealedHintIndex >= hints.count - 1 && !hints.isEmpty))
 
                     Button(action: { showSimilarExercises = true }) {
                         HStack {
@@ -206,6 +216,9 @@ struct ExerciseCardContent: View {
                 }
             }
 
+            // Hints Section
+            HintsSectionView(hints: $hints, revealedHintIndex: $revealedHintIndex, isLoading: $isLoadingHints, errorMessage: $hintsErrorMessage, onGenerate: generateHints)
+
             // Answer input area based on inputType
             Divider()
                 .padding(.vertical, 4)
@@ -222,9 +235,7 @@ struct ExerciseCardContent: View {
         .sheet(isPresented: $showSimilarExercises) {
             SimilarExercisesView(originalExercise: exercise)
         }
-        .sheet(isPresented: $showHints) {
-            HintsView(exercise: exercise)
-        }
+
         .sheet(isPresented: $showVerificationResult) {
             if let result = verificationResult {
                 VerificationResultView(result: result)
@@ -233,6 +244,31 @@ struct ExerciseCardContent: View {
     }
 
     // MARK: - Helper Functions
+
+    private func generateHints() {
+        isLoadingHints = true
+        hintsErrorMessage = nil
+
+        AIAnalysisService.shared.generateHints(for: exercise) { result in
+            isLoadingHints = false
+
+            switch result {
+            case .success(let generatedHints):
+                hints = generatedHints.sorted { $0.level < $1.level }
+                revealNextHint()
+            case .failure(let error):
+                hintsErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func revealNextHint() {
+        withAnimation {
+            if revealedHintIndex < hints.count - 1 {
+                revealedHintIndex += 1
+            }
+        }
+    }
 
     /// Verifies the student's answer using cloud AI
     private func verifyAnswer() {
@@ -351,5 +387,117 @@ struct ExerciseCardContent: View {
         case "both": return .purple
         default: return .gray
         }
+    }
+}
+
+private struct HintsSectionView: View {
+    @Binding var hints: [AIAnalysisService.Hint]
+    @Binding var revealedHintIndex: Int
+    @Binding var isLoading: Bool
+    @Binding var errorMessage: String?
+    let onGenerate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if isLoading {
+                HStack {
+                    ProgressView()
+                        .padding(.trailing, 8)
+                    Text("Generating hints...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            } else if let error = errorMessage {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Error loading hints")
+                        .font(.headline)
+                        .foregroundColor(.red)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Button("Try Again", action: onGenerate)
+                        .buttonStyle(.bordered)
+                }
+            } else if !hints.isEmpty {
+                Text("Hints")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+                if revealedHintIndex >= 0 {
+                    ForEach(0...revealedHintIndex, id: \.self) { index in
+                        if index < hints.count {
+                            HintCard(hint: hints[index])
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
+}
+
+private struct HintCard: View {
+    let hint: AIAnalysisService.Hint
+
+    private var levelColor: Color {
+        switch hint.level {
+        case 1: return .green
+        case 2: return .orange
+        case 3: return .red
+        default: return .gray
+        }
+    }
+
+    private var levelIcon: String {
+        switch hint.level {
+        case 1: return "1.circle.fill"
+        case 2: return "2.circle.fill"
+        case 3: return "3.circle.fill"
+        default: return "questionmark.circle.fill"
+        }
+    }
+
+    private var levelDescription: String {
+        switch hint.level {
+        case 1: return "Basic Hint"
+        case 2: return "Method Hint"
+        case 3: return "Detailed Hint"
+        default: return "Hint"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: levelIcon)
+                    .foregroundColor(levelColor)
+                    .font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(levelDescription)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(hint.title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(levelColor)
+                }
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(hint.content)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .foregroundColor(.primary)
+            }
+            .padding(.top, 4)
+        }
+        .padding()
+        .background(levelColor.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(levelColor.opacity(0.3), lineWidth: 1)
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 }

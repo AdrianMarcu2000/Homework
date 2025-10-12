@@ -188,32 +188,6 @@ struct ExerciseCardContent: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                // Verify Answer button (only show if cloud analysis is enabled)
-                if useCloudAnalysis {
-                    Button(action: verifyAnswer) {
-                        HStack {
-                            if isVerifying {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(0.8)
-                                Text("Verifying...")
-                            } else {
-                                Image(systemName: "checkmark.seal.fill")
-                                Text("Verify my answer")
-                            }
-                        }
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isVerifying)
-                }
             }
 
             // Hints Section
@@ -224,6 +198,32 @@ struct ExerciseCardContent: View {
                 .padding(.vertical, 4)
 
             answerInputView
+
+            // Verify Answer button (only show if cloud analysis is enabled)
+            if useCloudAnalysis {
+                Button(action: verifyAnswer) {
+                    HStack {
+                        if isVerifying {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                            Text("Verifying...")
+                        } else {
+                            Image(systemName: "checkmark.seal.fill")
+                            Text("Verify my answer")
+                        }
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+                .disabled(isVerifying)
+            }
         }
         .padding()
         .background(Color.green.opacity(0.05))

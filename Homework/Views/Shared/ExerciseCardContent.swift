@@ -148,6 +148,9 @@ struct ExerciseCardContent: View {
                     }
                 }
 
+            // Hints Section
+            HintsSectionView(hints: $hints, revealedHintIndex: $revealedHintIndex, isLoading: $isLoadingHints, errorMessage: $hintsErrorMessage, onGenerate: generateHints)
+
             // Action buttons (hints and practice)
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
@@ -189,9 +192,6 @@ struct ExerciseCardContent: View {
                     .buttonStyle(.plain)
                 }
             }
-
-            // Hints Section
-            HintsSectionView(hints: $hints, revealedHintIndex: $revealedHintIndex, isLoading: $isLoadingHints, errorMessage: $hintsErrorMessage, onGenerate: generateHints)
 
             // Answer input area based on inputType
             Divider()

@@ -15,7 +15,9 @@ struct ExerciseCardContent: View {
     let exercise: AIAnalysisService.Exercise
     let imageData: Data?
     @Binding var exerciseAnswers: [String: Data]?
-    @State private var showSimilarExercises = false
+    @State private var similarExercises: [AIAnalysisService.SimilarExercise] = []
+    @State private var isLoadingSimilarExercises = false
+    @State private var similarExercisesErrorMessage: String?
     @State private var hints: [AIAnalysisService.Hint] = []
     @State private var revealedHintIndex: Int = -1
     @State private var isLoadingHints = false
@@ -151,7 +153,7 @@ struct ExerciseCardContent: View {
             // Hints Section
             HintsSectionView(hints: $hints, revealedHintIndex: $revealedHintIndex, isLoading: $isLoadingHints, errorMessage: $hintsErrorMessage, onGenerate: generateHints)
 
-            // Action buttons (hints and practice)
+            // Action buttons (hints)
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
                     Button(action: { 
@@ -175,21 +177,6 @@ struct ExerciseCardContent: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(isLoadingHints || (revealedHintIndex >= hints.count - 1 && !hints.isEmpty))
-
-                    Button(action: { showSimilarExercises = true }) {
-                        HStack {
-                            Image(systemName: "sparkles")
-                            Text("Practice")
-                        }
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .leading, endPoint: .trailing))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
 
@@ -224,6 +211,30 @@ struct ExerciseCardContent: View {
                 .buttonStyle(.plain)
                 .disabled(isVerifying)
             }
+
+            // Practice button
+            Button(action: { 
+                if similarExercises.isEmpty && !isLoadingSimilarExercises {
+                    generateSimilarExercises()
+                }
+            }) {
+                HStack {
+                    Image(systemName: "sparkles")
+                    Text("Practice")
+                }
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .leading, endPoint: .trailing))
+                .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoadingSimilarExercises)
+
+            // Similar Exercises Section
+            SimilarExercisesSectionView(similarExercises: $similarExercises, isLoading: $isLoadingSimilarExercises, errorMessage: $similarExercisesErrorMessage, onGenerate: generateSimilarExercises)
         }
         .padding()
         .background(Color.green.opacity(0.05))
@@ -232,9 +243,6 @@ struct ExerciseCardContent: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.green.opacity(0.3), lineWidth: 1)
         )
-        .sheet(isPresented: $showSimilarExercises) {
-            SimilarExercisesView(originalExercise: exercise)
-        }
 
         .sheet(isPresented: $showVerificationResult) {
             if let result = verificationResult {
@@ -266,6 +274,25 @@ struct ExerciseCardContent: View {
         withAnimation {
             if revealedHintIndex < hints.count - 1 {
                 revealedHintIndex += 1
+            }
+        }
+    }
+
+    private func generateSimilarExercises() {
+        isLoadingSimilarExercises = true
+        similarExercisesErrorMessage = nil
+
+        AIAnalysisService.shared.generateSimilarExercises(
+            basedOn: exercise,
+            count: 3
+        ) { result in
+            isLoadingSimilarExercises = false
+
+            switch result {
+            case .success(let exercises):
+                similarExercises = exercises
+            case .failure(let error):
+                similarExercisesErrorMessage = error.localizedDescription
             }
         }
     }
@@ -387,6 +414,106 @@ struct ExerciseCardContent: View {
         case "both": return .purple
         default: return .gray
         }
+    }
+}
+
+private struct SimilarExercisesSectionView: View {
+    @Binding var similarExercises: [AIAnalysisService.SimilarExercise]
+    @Binding var isLoading: Bool
+    @Binding var errorMessage: String?
+    let onGenerate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if isLoading {
+                HStack {
+                    ProgressView()
+                        .padding(.trailing, 8)
+                    Text("Generating similar exercises...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            } else if let error = errorMessage {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Error loading similar exercises")
+                        .font(.headline)
+                        .foregroundColor(.red)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Button("Try Again", action: onGenerate)
+                        .buttonStyle(.bordered)
+                }
+            } else if !similarExercises.isEmpty {
+                Text("Similar Exercises")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+                CombinedSimilarExercisesCard(exercises: similarExercises)
+            }
+        }
+        .padding(.top, 8)
+    }
+}
+
+private struct CombinedSimilarExercisesCard: View {
+    let exercises: [AIAnalysisService.SimilarExercise]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(exercises) { exercise in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 4) {
+                            difficultyIcon(for: exercise.difficulty)
+                            Text(exercise.difficulty.capitalized)
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(difficultyColor(for: exercise.difficulty).opacity(0.2))
+                        .cornerRadius(8)
+                    }
+                    Text(exercise.content)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .foregroundColor(.primary)
+                }
+                if exercise.id != exercises.last?.id {
+                    Divider()
+                }
+            }
+        }
+        .padding()
+        .background(Color.purple.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func difficultyColor(for difficulty: String) -> Color {
+        switch difficulty.lowercased() {
+        case "easier": return .green
+        case "harder": return .red
+        default: return .orange
+        }
+    }
+
+    private func difficultyIcon(for difficulty: String) -> some View {
+        Group {
+            switch difficulty.lowercased() {
+            case "easier":
+                Image(systemName: "arrow.down.circle.fill")
+            case "harder":
+                Image(systemName: "arrow.up.circle.fill")
+            default:
+                Image(systemName: "equal.circle.fill")
+            }
+        }
+        .foregroundColor(difficultyColor(for: difficulty))
+        .font(.caption)
     }
 }
 

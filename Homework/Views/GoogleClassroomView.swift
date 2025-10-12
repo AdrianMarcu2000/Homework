@@ -16,6 +16,7 @@ struct GoogleClassroomView: View {
     @State private var expandedCourses: Set<String> = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var showSettings = false
 
     @Binding var selectedCourse: ClassroomCourse?
     @Binding var selectedAssignment: ClassroomAssignment?
@@ -119,11 +120,21 @@ struct GoogleClassroomView: View {
                             )
                         }
                     }
-                    .listStyle(.sidebar)
-                    .refreshable {
-                        loadCourses()
-                    }
-                }
+                                    .listStyle(.sidebar)
+                                    .refreshable {
+                                        loadCourses()
+                                    }
+                                    .toolbar {
+                                        ToolbarItem(placement: .navigationBarTrailing) {
+                                            Button(action: { showSettings = true }) {
+                                                Label("Settings", systemImage: "gearshape")
+                                                    .labelStyle(.iconOnly)
+                                            }
+                                        }
+                                    }
+                                    .sheet(isPresented: $showSettings) {
+                                        SettingsView()
+                                    }                }
             }
 
             // Login status and sign out - always at bottom

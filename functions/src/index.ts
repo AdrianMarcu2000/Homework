@@ -29,7 +29,7 @@ const analysisSchema = {
                     },
                     content: {
                         type: "STRING",
-                        description: "The complete text content of this section, synthesized from the OCR data."
+                        description: "The complete, CORRECTED text content of this exercise. Read the text directly from the IMAGE to ensure accuracy, especially for mathematical notation, special characters, and symbols. The OCR data is a REFERENCE for positioning only and may contain errors. Your content must be the ACTUAL text you see in the image, properly formatted and error-free."
                     },
                     subject: {
                         type: "STRING",
@@ -201,23 +201,36 @@ Use 'both' when:
 - For mathematics exercises, default to 'canvas' or 'both' to allow showing work.
 - For simple recall questions, use 'text' for quick answers.
 
---- COORDINATE & SYNTHESIS INSTRUCTIONS ---
-1. Use the 'ocrJsonText' data, paying close attention to the Y-coordinates to define the visual boundaries of each section.
+--- COORDINATE & CONTENT EXTRACTION INSTRUCTIONS ---
+1. Use the 'ocrJsonText' data ONLY for Y-coordinates to define the visual boundaries of each section.
 2. The 'yStart' must be the MINIMUM Y-coordinate of any text paragraph belonging to that section.
 3. The 'yEnd' must be the MAXIMUM Y-coordinate of any text paragraph belonging to that section.
-4. Synthesize the 'content' field for each section, making it readable and coherent, using the OCR data as your source of truth.
-5. Group related text blocks that belong to the same exercise based on proximity (Y-coordinates) and content continuity.
-6. Your output MUST strictly adhere to the provided JSON schema.`;
+4. For the 'content' field: READ THE TEXT DIRECTLY FROM THE IMAGE. The OCR data may have errors, especially with:
+   - Mathematical symbols and notation (e.g., exponents, fractions, special operators)
+   - Special characters and punctuation
+   - Accented letters and non-English characters
+   - Formatting and spacing
+5. IMPORTANT: Your 'content' must be the ACCURATE text you actually see in the image, NOT the OCR text. Correct all errors.
+6. Use plain text for mathematical expressions: write "x^2" for x squared, "(a+b)^2" for squared binomial, "2/3" for fractions, etc.
+7. Group related text blocks that belong to the same exercise based on proximity (Y-coordinates) and content continuity.
+8. Your output MUST strictly adhere to the provided JSON schema.`;
 
 
     // 2. Define the user prompt, combining the image and text data
     const userPrompt = `Analyze this homework document and identify all exercises.
 
---- OCR TEXT DATA ---
+--- OCR TEXT DATA (FOR Y-COORDINATES ONLY) ---
 ${ocrJsonText}
 --- END OCR TEXT DATA ---
 
-Using both the image and the OCR text with Y-coordinates, identify and segment each EXERCISE. Mark headers, footers, titles, and non-exercise content as SKIP. Produce the structured JSON analysis following the provided schema.`;
+IMPORTANT INSTRUCTIONS:
+1. Use the OCR data ONLY to identify Y-coordinates for positioning exercises
+2. For exercise CONTENT, read the text directly from the IMAGE - the OCR may have errors
+3. Correct all OCR errors, especially mathematical notation, special characters, and symbols
+4. Provide clean, accurate text that matches what you see in the image
+5. Use plain text notation for math: "x^2", "(a+b)^2", "2/3", etc.
+
+Identify and segment each EXERCISE with corrected, accurate content. Mark headers, footers, titles, and non-exercise content as SKIP. Produce the structured JSON analysis following the provided schema.`;
 
     // 3. Construct the API payload
     // Use stable Gemini 2.5 Flash model (free tier, supports 1M tokens)

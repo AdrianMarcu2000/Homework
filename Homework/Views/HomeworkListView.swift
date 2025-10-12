@@ -169,6 +169,7 @@ struct HomeworkDetailView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
     @State private var selectedTab = 0
+    @State private var isReanalyzing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -215,7 +216,30 @@ struct HomeworkDetailView: View {
 
                 // Exercises Tab
                 Group {
-                    if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
+                    if isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress {
+                        // Show progress indicator during reanalysis
+                        VStack(spacing: 16) {
+                            Spacer()
+
+                            if let progress = viewModel.analysisProgress {
+                                ProgressView(value: Double(progress.current), total: Double(progress.total))
+                                    .progressViewStyle(.linear)
+                                    .frame(maxWidth: 300)
+                                Text("Analyzing segment \(progress.current) of \(progress.total)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                ProgressView()
+                                    .scaleEffect(1.5)
+                                Text(viewModel.isCloudAnalysisInProgress ? "Analyzing with cloud AI..." : "Analyzing homework...")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 8)
+                            }
+
+                            Spacer()
+                        }
+                    } else if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 Text("✏️ Exercises")
@@ -223,13 +247,14 @@ struct HomeworkDetailView: View {
                                     .fontWeight(.bold)
                                     .padding(.horizontal)
 
-                                ForEach(Array(analysis.exercises.enumerated()), id: \.offset) { index, exercise in
+                                ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
                                     ExerciseCard(exercise: exercise, homeworkItem: item)
                                         .padding(.horizontal)
                                 }
                             }
                             .padding(.vertical)
                         }
+                        .id(item.analysisJSON ?? "")
                     } else {
                         // No analysis exists - show analyze options
                         VStack(spacing: 20) {
@@ -291,6 +316,16 @@ struct HomeworkDetailView: View {
         }
         .navigationTitle("Homework Details")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: viewModel.isProcessingOCR) { _, newValue in
+            if !newValue && !viewModel.isCloudAnalysisInProgress {
+                isReanalyzing = false
+            }
+        }
+        .onChange(of: viewModel.isCloudAnalysisInProgress) { _, newValue in
+            if !newValue && !viewModel.isProcessingOCR {
+                isReanalyzing = false
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 2) {
@@ -305,25 +340,29 @@ struct HomeworkDetailView: View {
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
+                HStack(spacing: 12) {
+                    // Local reanalyze button
                     Button(action: {
+                        isReanalyzing = true
                         viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
                     }) {
-                        Label("Re-analyze (Local)", systemImage: "arrow.clockwise")
+                        Label("Local", systemImage: "arrow.clockwise")
+                            .labelStyle(.iconOnly)
                     }
+                    .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
 
-                    // Only show cloud option if enabled in settings
+                    // Cloud reanalyze button (only show if enabled in settings)
                     if useCloudAnalysis {
                         Button(action: {
+                            isReanalyzing = true
                             viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
                         }) {
-                            Label("Re-analyze (Cloud)", systemImage: "cloud")
+                            Label("Cloud", systemImage: "cloud")
+                                .labelStyle(.iconOnly)
                         }
+                        .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
                     }
-                } label: {
-                    Image(systemName: "arrow.clockwise.circle")
                 }
-                .disabled(viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
             }
         }
     }

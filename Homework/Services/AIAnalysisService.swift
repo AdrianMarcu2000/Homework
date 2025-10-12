@@ -699,7 +699,6 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
         Task {
             do {
                 let response = try await session.respond(to: prompt)
-
                 let jsonString = extractJSON(from: response.content)
 
                 guard let data = jsonString.data(using: .utf8) else {
@@ -727,17 +726,48 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
     private func extractJSON(from text: String) -> String {
         var jsonString = text
 
-        // Try to find JSON object boundaries first (more common for structured responses)
-        if let startIndex = text.firstIndex(of: "{"),
-           let endIndex = text.lastIndex(of: "}") {
-            let jsonRange = startIndex...endIndex
-            jsonString = String(text[jsonRange])
+        // Remove markdown code blocks if present (```json ... ``` or ``` ... ```)
+        var cleanedText = text
+        if let codeBlockStart = text.range(of: "```json\n"),
+           let codeBlockEnd = text.range(of: "\n```", range: codeBlockStart.upperBound..<text.endIndex) {
+            cleanedText = String(text[codeBlockStart.upperBound..<codeBlockEnd.lowerBound])
+        } else if let codeBlockStart = text.range(of: "```\n"),
+                  let codeBlockEnd = text.range(of: "\n```", range: codeBlockStart.upperBound..<text.endIndex) {
+            cleanedText = String(text[codeBlockStart.upperBound..<codeBlockEnd.lowerBound])
         }
-        // Try to find JSON array boundaries
-        else if let startIndex = text.firstIndex(of: "["),
-                let endIndex = text.lastIndex(of: "]") {
-            let jsonRange = startIndex...endIndex
-            jsonString = String(text[jsonRange])
+
+        // Trim whitespace and check what the JSON starts with
+        let trimmed = cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Check if it starts with [ (array) or { (object) to determine what to extract
+        if trimmed.hasPrefix("[") {
+            // Extract array
+            if let startIndex = cleanedText.firstIndex(of: "["),
+               let endIndex = cleanedText.lastIndex(of: "]") {
+                let jsonRange = startIndex...endIndex
+                jsonString = String(cleanedText[jsonRange])
+            }
+        } else if trimmed.hasPrefix("{") {
+            // Extract object
+            if let startIndex = cleanedText.firstIndex(of: "{"),
+               let endIndex = cleanedText.lastIndex(of: "}") {
+                let jsonRange = startIndex...endIndex
+                jsonString = String(cleanedText[jsonRange])
+            }
+        } else {
+            // Fallback: try to find any JSON structure in cleaned text
+            // Try object first
+            if let startIndex = cleanedText.firstIndex(of: "{"),
+               let endIndex = cleanedText.lastIndex(of: "}") {
+                let jsonRange = startIndex...endIndex
+                jsonString = String(cleanedText[jsonRange])
+            }
+            // Try array
+            else if let startIndex = cleanedText.firstIndex(of: "["),
+                    let endIndex = cleanedText.lastIndex(of: "]") {
+                let jsonRange = startIndex...endIndex
+                jsonString = String(cleanedText[jsonRange])
+            }
         }
 
         // Fix LaTeX math notation and other backslash issues in JSON

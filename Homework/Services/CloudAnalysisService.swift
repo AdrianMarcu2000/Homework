@@ -257,7 +257,10 @@ class CloudAnalysisService {
     private static func convertToAnalysisResult(_ cloudResult: CloudAnalysisResult) -> AIAnalysisService.AnalysisResult {
         var exercises: [AIAnalysisService.Exercise] = []
 
-        for section in cloudResult.sections {
+        print("DEBUG CLOUD: Converting cloud result to exercises...")
+        print("DEBUG CLOUD: Total sections: \(cloudResult.sections.count)")
+
+        for (_, section) in cloudResult.sections.enumerated() {
             // Normalize Y coordinates back to 0-1 range
             let startY = Double(section.yStart) / 1000.0
             let endY = Double(section.yEnd) / 1000.0
@@ -276,19 +279,24 @@ class CloudAnalysisService {
                 )
                 exercises.append(exercise)
 
-                // Log exercise details
+                // Log exercise details with corrected content
                 let subjectStr = section.subject ?? "N/A"
                 let inputTypeStr = section.inputType ?? "N/A"
                 print("📝 Exercise #\(exerciseNumber): Subject=\(subjectStr), Input=\(inputTypeStr), Type=\(exercise.type)")
+                print("   ✅ CORRECTED CONTENT (from LLM): \(section.content.prefix(100))...")
+                if section.content.count > 100 {
+                    print("      (content length: \(section.content.count) chars)")
+                }
             } else {
                 print("DEBUG CLOUD: Skipping section type: \(section.type)")
             }
         }
 
         // Sort by Y position (descending for top-to-bottom order)
-        return AIAnalysisService.AnalysisResult(
-            exercises: exercises.sorted { $0.startY > $1.startY }
-        )
+        let sortedExercises = exercises.sorted { $0.startY > $1.startY }
+        print("DEBUG CLOUD: ✅ Successfully converted to \(sortedExercises.count) exercises")
+
+        return AIAnalysisService.AnalysisResult(exercises: sortedExercises)
     }
 
     /// Extracts exercise number from title

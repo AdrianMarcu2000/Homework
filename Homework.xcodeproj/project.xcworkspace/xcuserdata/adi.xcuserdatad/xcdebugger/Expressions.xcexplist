@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VariablesViewState
+   version = "1.0">
+   <ContextStates>
+      <ContextState
+         contextName = "closure #1 in ExerciseCard.body.getter:LessonsAndExercisesView.swift">
+         <PersistentStrings>
+            <PersistentString
+               value = "exercise">
+            </PersistentString>
+            <PersistentString
+               value = "exercise.fullContent">
+            </PersistentString>
+         </PersistentStrings>
+      </ContextState>
+   </ContextStates>
+</VariablesViewState>

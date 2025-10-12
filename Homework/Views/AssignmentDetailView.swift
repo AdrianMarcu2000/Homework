@@ -98,6 +98,8 @@ struct AssignmentDetailView: View {
                 Group {
                     if isAnalyzing {
                         VStack(spacing: 16) {
+                            Spacer()
+
                             if let progress = analysisProgress {
                                 ProgressView(value: Double(progress.current), total: Double(progress.total))
                                     .progressViewStyle(.linear)
@@ -107,10 +109,14 @@ struct AssignmentDetailView: View {
                                     .foregroundColor(.secondary)
                             } else {
                                 ProgressView()
+                                    .scaleEffect(1.5)
                                 Text("Analyzing assignment...")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .padding(.top, 8)
                             }
+
+                            Spacer()
                         }
                     } else if let analysis = assignment.analysisResult, !analysis.exercises.isEmpty {
                         ScrollView {
@@ -120,13 +126,14 @@ struct AssignmentDetailView: View {
                                     .fontWeight(.bold)
                                     .padding(.horizontal)
 
-                                ForEach(Array(analysis.exercises.enumerated()), id: \.offset) { index, exercise in
+                                ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
                                     ClassroomExerciseCard(exercise: exercise, assignment: assignment)
                                         .padding(.horizontal)
                                 }
                             }
                             .padding(.vertical)
                         }
+                        .id(assignment.analysisJSON ?? "")
                     } else {
                         // No analysis exists - show analyze options
                         VStack(spacing: 20) {
@@ -215,20 +222,23 @@ struct AssignmentDetailView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 if assignment.imageData != nil {
-                    Menu {
+                    HStack(spacing: 12) {
+                        // Local reanalyze button
                         Button(action: { analyzeAssignment(useCloud: false) }) {
-                            Label("Re-analyze (Local)", systemImage: "arrow.clockwise")
+                            Label("Local", systemImage: "arrow.clockwise")
+                                .labelStyle(.iconOnly)
                         }
+                        .disabled(isAnalyzing)
 
+                        // Cloud reanalyze button (only show if enabled in settings)
                         if useCloudAnalysis {
                             Button(action: { analyzeAssignment(useCloud: true) }) {
-                                Label("Re-analyze (Cloud)", systemImage: "cloud")
+                                Label("Cloud", systemImage: "cloud")
+                                    .labelStyle(.iconOnly)
                             }
+                            .disabled(isAnalyzing)
                         }
-                    } label: {
-                        Image(systemName: "arrow.clockwise.circle")
                     }
-                    .disabled(isAnalyzing)
                 }
             }
         }
@@ -349,14 +359,30 @@ struct AssignmentDetailView: View {
     }
 
     private func saveAnalysisResult(_ analysis: AIAnalysisService.AnalysisResult) {
+        // Check if we're overwriting existing analysis
+        if let oldAnalysis = assignment.analysisResult {
+            print("DEBUG SAVE: ⚠️ OVERWRITING existing classroom assignment analysis")
+            print("DEBUG SAVE: Previous analysis had \(oldAnalysis.exercises.count) exercises")
+        } else {
+            print("DEBUG SAVE: Creating new analysis for classroom assignment")
+        }
+
         do {
+            print("DEBUG SAVE: Saving analysis - Exercises: \(analysis.exercises.count)")
+            print("DEBUG SAVE: Exercise order before encoding:")
+            for (idx, ex) in analysis.exercises.enumerated() {
+                print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
+                print("     Content preview: \(ex.fullContent.prefix(80))...")
+            }
+
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let jsonData = try encoder.encode(analysis)
             if let jsonString = String(data: jsonData, encoding: .utf8) {
+                // Explicitly overwrite analysisJSON field
                 assignment.analysisJSON = jsonString
                 assignment.saveToCache()
-                print("✅ Analysis saved for classroom assignment")
+                print("DEBUG SAVE: ✅ Analysis saved to UserDefaults (overwrites any previous analysis)")
             }
         } catch {
             print("❌ Error encoding analysis: \(error)")
@@ -538,6 +564,13 @@ private struct ExerciseCardContent: View {
                 .font(.body)
                 .textSelection(.enabled)
                 .foregroundColor(.primary)
+                .onAppear {
+                    print("🖥️ UI RENDER: Displaying exercise #\(exercise.exerciseNumber)")
+                    print("   Content: \(exercise.fullContent.prefix(150))...")
+                    if exercise.fullContent.count > 150 {
+                        print("   (total length: \(exercise.fullContent.count) chars)")
+                    }
+                }
 
             // Action buttons (hints and practice)
             VStack(spacing: 8) {

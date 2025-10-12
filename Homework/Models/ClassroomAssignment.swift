@@ -131,13 +131,18 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework {
         }
 
         if let json = analysisJSON {
+            // Explicitly overwrite existing analysis in UserDefaults
             defaults.set(json, forKey: "\(cacheKey)_analysis")
+            print("DEBUG CACHE: ✅ Analysis JSON written to UserDefaults cache (key: \(cacheKey)_analysis)")
         }
 
         if let answers = exerciseAnswers,
            let answersData = try? JSONEncoder().encode(answers) {
             defaults.set(answersData, forKey: "\(cacheKey)_answers")
         }
+
+        // Force synchronize to ensure write completes immediately
+        defaults.synchronize()
     }
 }
 

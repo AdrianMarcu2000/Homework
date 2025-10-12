@@ -194,7 +194,10 @@ class HomeworkCaptureViewModel: ObservableObject {
             // Check if we're re-analyzing an existing item
             if let existingItem = reanalyzingItem {
                 item = existingItem
-                print("DEBUG SAVE: Updating existing item")
+                print("DEBUG SAVE: ⚠️ OVERWRITING existing item analysis")
+                if let oldAnalysis = item.analysisResult {
+                    print("DEBUG SAVE: Previous analysis had \(oldAnalysis.exercises.count) exercises")
+                }
             } else {
                 item = Item(context: context)
                 item.timestamp = Date()
@@ -216,17 +219,19 @@ class HomeworkCaptureViewModel: ObservableObject {
                 print("DEBUG SAVE: Exercise order before encoding:")
                 for (idx, ex) in analysis.exercises.enumerated() {
                     print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
+                    print("     Content preview: \(ex.fullContent.prefix(80))...")
                 }
                 do {
                     let encoder = JSONEncoder()
                     encoder.outputFormatting = .prettyPrinted
                     let jsonData = try encoder.encode(analysis)
                     if let jsonString = String(data: jsonData, encoding: .utf8) {
+                        // Explicitly overwrite analysisJSON field
                         item.analysisJSON = jsonString
-                        print("DEBUG SAVE: Analysis JSON saved successfully")
+                        print("DEBUG SAVE: ✅ Analysis JSON saved successfully (overwrites any previous analysis)")
                     }
                 } catch {
-                    print("Error encoding analysis result: \(error)")
+                    print("❌ Error encoding analysis result: \(error)")
                 }
             } else {
                 print("DEBUG SAVE: No analysis result to save")
@@ -234,10 +239,11 @@ class HomeworkCaptureViewModel: ObservableObject {
 
             do {
                 try context.save()
+                print("DEBUG SAVE: ✅ Core Data save successful")
                 dismissTextSheet()
             } catch {
                 let nsError = error as NSError
-                print("Error saving homework: \(nsError), \(nsError.userInfo)")
+                print("❌ Error saving homework: \(nsError), \(nsError.userInfo)")
             }
         }
     }

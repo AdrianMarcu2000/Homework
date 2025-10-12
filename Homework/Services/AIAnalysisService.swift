@@ -389,13 +389,16 @@ Return JSON only:
         }
 
         let prompt = """
-        You are an educational exercise generator. Generate \(count) similar practice exercises based on the following exercise.
+        You are an educational exercise generator. Your task is to generate 3 similar practice exercises based on the original exercise provided below. If the exercise has subexercises keep the number of subexercises for each.
 
         Original Exercise:
         Type: \(exercise.type)
         Content: \(exercise.fullContent)
 
-        Generate \(count) similar exercises with varying difficulty levels (same, easier, harder).
+        Generate exactly 3 exercises with the following difficulty levels:
+        1.  **Easier:** A practice exercise that is simpler than the original (e.g., uses smaller numbers, has fewer steps, or is a more basic version of the concept).
+        2.  **Same Difficulty:** A practice exercise that has a similar complexity to the original.
+        3.  **Harder:** A practice exercise that is more challenging than the original (e.g., uses larger numbers, requires more steps, or introduces a more complex variation of the concept).
 
         IMPORTANT:
         - Return ONLY valid JSON. Do not include any explanatory text before or after the JSON.
@@ -408,30 +411,22 @@ Return JSON only:
             {
                 "exerciseNumber": "1",
                 "type": "\(exercise.type)",
-                "content": "The exercise text here",
+                "content": "The exercise text for the 'easier' difficulty level goes here.",
                 "difficulty": "same"
             },
             {
                 "exerciseNumber": "2",
                 "type": "\(exercise.type)",
-                "content": "The exercise text here",
+                "content": "The exercise text for the 'same' difficulty level goes here.",
                 "difficulty": "easier"
             },
             {
                 "exerciseNumber": "3",
                 "type": "\(exercise.type)",
-                "content": "The exercise text here",
+                "content": "The exercise text for the 'harder' difficulty level goes here.",
                 "difficulty": "harder"
             }
         ]
-
-        Guidelines:
-        - Keep the same exercise type and educational level
-        - Vary the numbers, variables, or context but maintain the same concept
-        - "same" difficulty: Similar complexity to original
-        - "easier": Simpler numbers or fewer steps
-        - "harder": More complex numbers or additional steps
-        - Ensure exercises are educational and appropriate for students
         """
 
         Task {

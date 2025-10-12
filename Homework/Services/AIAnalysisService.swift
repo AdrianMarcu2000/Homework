@@ -187,9 +187,13 @@ RULES:
 - Questions or imperatives (Find, Solve, Calculate, Write, Complete, Expand) = EXERCISE
 - Pure headers/footers/titles without questions = SKIP
 
-RESPONSE FORMAT (choose one):
-Exercise: {"type":"exercise","exercise":{"exerciseNumber":"NUM","type":"TYPE","fullContent":"TEXT","startY":\(segment.startY),"endY":\(segment.endY)}}
-Skip: {"type":"skip"}
+RESPONSE FORMAT:
+You must respond with a JSON object that has a "type" field.
+If the segment is an exercise, the JSON should be:
+{"type":"exercise", "exercise": {"exerciseNumber":"NUM", "type":"TYPE", "fullContent":"TEXT", "startY":\(segment.startY), "endY":\(segment.endY)}}
+
+If the segment should be skipped, the JSON should be:
+{"type":"skip"}
 
 Types: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, other
 
@@ -197,7 +201,7 @@ Types: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_
 \(truncatedText)
 ---END TEXT SEGMENT---
 
-Return JSON only:
+Return ONLY the JSON object:
 """
 
                 do {
@@ -329,7 +333,7 @@ Return JSON only:
         - Use precise Y coordinates from the OCR blocks
         - Ensure endY > startY for each item
         - Do not overlap content boundaries
-        - For fullContent: Provide YOUR interpretation and understanding of the text, not just raw OCR
+        - For fullContent: Provide YOUR interpretation and understanding of the text, not just raw OCR. When creating the `fullContent`, it is crucial that you preserve the original formatting and indentation of the exercise as seen in the image. This includes line breaks, spacing, and any other structural elements.
         - Fix any OCR errors or typos in fullContent
         - Format mathematical expressions clearly in plain text
         - Make the content clear and readable
@@ -491,7 +495,7 @@ SKIP (not exercises):
 For each exercise, identify:
 - exerciseNumber: The number/identifier (e.g., "1", "a", "Exercise 3")
 - type: Choose from: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, other
-- fullContent: Clean, properly formatted text of the exercise with OCR errors corrected
+- fullContent: Clean, properly formatted text of the exercise with OCR errors corrected. When creating the `fullContent`, it is crucial that you preserve the original formatting and indentation of the exercise as seen in the image. This includes line breaks, spacing, and any other structural elements.
 - subject: The subject area (mathematics, language, science, history, etc.) or null if unclear
 - inputType: How the student should answer - "text" for written answers, "canvas" for drawing/diagrams, "both" if mixed
 

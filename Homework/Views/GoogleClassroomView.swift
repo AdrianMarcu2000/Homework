@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import GoogleSignIn
 
 /// View for Google Classroom integration
 struct GoogleClassroomView: View {
@@ -84,36 +85,69 @@ struct GoogleClassroomView: View {
     // MARK: - Courses List View
 
     private var coursesListView: some View {
-        Group {
-            if isLoading {
-                ProgressView("Loading courses...")
-            } else if courses.isEmpty {
-                emptyStateView
-            } else {
-                List(selection: $selectedCourse) {
-                    ForEach(courses.filter { $0.isActive }) { course in
-                        CourseRow(course: course)
-                            .tag(course)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedCourse = course
-                            }
+        VStack(spacing: 0) {
+            // Main content area
+            Group {
+                if isLoading {
+                    VStack {
+                        Spacer()
+                        ProgressView("Loading courses...")
+                        Spacer()
                     }
-
-                    // Sign out button at the bottom
-                    Section {
-                        Button(role: .destructive, action: signOut) {
-                            HStack {
-                                Spacer()
-                                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                                Spacer()
-                            }
+                } else if courses.isEmpty {
+                    VStack {
+                        Spacer()
+                        emptyStateView
+                        Spacer()
+                    }
+                } else {
+                    List(selection: $selectedCourse) {
+                        ForEach(courses.filter { $0.isActive }) { course in
+                            CourseRow(course: course)
+                                .tag(course)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectedCourse = course
+                                }
                         }
                     }
+                    .refreshable {
+                        loadCourses()
+                    }
                 }
-                .refreshable {
-                    loadCourses()
+            }
+
+            // Login status and sign out - always at bottom
+            VStack(spacing: 0) {
+                Divider()
+
+                // Logged in status
+                if let email = authService.currentUser?.profile?.email {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.crop.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Logged in as")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text(email)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.green.opacity(0.1))
                 }
+
+                // Sign out button
+                Button(role: .destructive, action: signOut) {
+                    HStack {
+                        Spacer()
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        Spacer()
+                    }
+                }
+                .padding(.vertical, 12)
+                .background(Color(UIColor.systemBackground))
             }
         }
     }

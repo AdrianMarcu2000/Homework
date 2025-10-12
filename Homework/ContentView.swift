@@ -99,6 +99,7 @@ private struct ContentViewInternal: View {
                     GoogleClassroomView(selectedCourse: $selectedCourse)
                 }
             }
+            .frame(maxHeight: .infinity, alignment: .top)
             .environment(\.managedObjectContext, viewContext)
 
             // Detail view - force refresh when tab changes

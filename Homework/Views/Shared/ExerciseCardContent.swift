@@ -48,39 +48,12 @@ struct ExerciseCardContent: View {
     /// Computed view that returns the appropriate input method based on exercise type
     @ViewBuilder
     private var answerInputView: some View {
-        let inputType = exercise.inputType ?? "canvas" // default to canvas if not specified
         let isMath = exercise.subject == "mathematics"
 
-        switch inputType {
-        case "inline":
-            // Inline fill-in-the-blank input
-            InlineAnswerView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers)
-
-        case "text":
-            // Simple text input for short answers
-            TextAnswerView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers)
-
-        case "canvas":
-            // Canvas for showing work - use math notebook style for math
-            if isMath {
-                MathNotebookCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
-            } else {
-                DrawingCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
-            }
-
-        case "both":
-            // Both canvas and text input
-            VStack(spacing: 12) {
-                if isMath {
-                    MathNotebookCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
-                } else {
-                    DrawingCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
-                }
-                TextAnswerView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers)
-            }
-
-        default:
-            // Fallback to canvas
+        // Canvas for showing work - use math notebook style for math
+        if isMath {
+            MathNotebookCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
+        } else {
             DrawingCanvasView(exercise: exercise, imageData: imageData, exerciseAnswers: $exerciseAnswers, canvasData: $canvasData)
         }
     }
@@ -101,6 +74,7 @@ struct ExerciseCardContent: View {
                 }
                 Spacer()
 
+                /* This code has been removed to simplify the UI
                 if let inputType = exercise.inputType {
                     HStack(spacing: 4) {
                         Image(systemName: inputTypeIcon(inputType))
@@ -115,6 +89,7 @@ struct ExerciseCardContent: View {
                     .foregroundColor(inputTypeColor(inputType))
                     .cornerRadius(6)
                 }
+                */
 
                 Text(exercise.type.capitalized)
                     .font(.caption)
@@ -301,83 +276,28 @@ struct ExerciseCardContent: View {
     private func verifyAnswer() {
         isVerifying = true
 
-        // Determine the answer type and extract the answer
-        let inputType = exercise.inputType ?? "canvas"
-        var answerText: String?
         var canvasDrawing: PKDrawing?
 
-        // Extract answer based on input type
-        let key = "\(exercise.exerciseNumber)_\(exercise.startY)"
-
-        switch inputType {
-        case "inline":
-            // Get inline answer
-            let inlineKey = "\(key)_inline"
-            if let answers = exerciseAnswers,
-               let savedData = answers[inlineKey],
-               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
-                answerText = text
-            }
-
-        case "text":
-            // Get text answer
-            let textKey = "\(key)_text"
-            if let answers = exerciseAnswers,
-               let savedData = answers[textKey],
-               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
-                answerText = text
-            }
-
-        case "canvas":
-            // Get canvas drawing
-            if let savedData = canvasData,
-               let drawing = try? PKDrawing(data: savedData) {
-                canvasDrawing = drawing
-            }
-
-        case "both":
-            // Get both canvas and text
-            if let savedData = canvasData,
-               let drawing = try? PKDrawing(data: savedData) {
-                canvasDrawing = drawing
-            }
-            let textKey = "\(key)_text"
-            if let answers = exerciseAnswers,
-               let savedData = answers[textKey],
-               let text = String(data: savedData, encoding: .utf8), !text.isEmpty {
-                answerText = text
-            }
-
-        default:
-            // Default to canvas
-            if let savedData = canvasData,
-               let drawing = try? PKDrawing(data: savedData) {
-                canvasDrawing = drawing
-            }
+        // Get canvas drawing
+        if let savedData = canvasData,
+           let drawing = try? PKDrawing(data: savedData) {
+            canvasDrawing = drawing
         }
 
         // Validate we have an answer
-        guard answerText != nil || canvasDrawing != nil else {
+        guard canvasDrawing != nil else {
             isVerifying = false
             print("DEBUG VERIFY: No answer found for exercise \(exercise.exerciseNumber)")
             return
         }
 
-        // Determine verification type (prefer canvas if available for "both")
-        let verificationType: String
-        if canvasDrawing != nil {
-            verificationType = "canvas"
-        } else {
-            verificationType = inputType == "inline" ? "inline" : "text"
-        }
-
-        print("DEBUG VERIFY: Verifying answer - Type: \(verificationType), Has text: \(answerText != nil), Has canvas: \(canvasDrawing != nil)")
+        print("DEBUG VERIFY: Verifying answer - Type: canvas, Has canvas: \(canvasDrawing != nil)")
 
         // Call verification service
         AnswerVerificationService.shared.verifyAnswer(
             exercise: exercise,
-            answerType: verificationType,
-            answerText: answerText,
+            answerType: "canvas",
+            answerText: nil,
             canvasDrawing: canvasDrawing
         ) { [self] result in
             DispatchQueue.main.async {
@@ -396,6 +316,7 @@ struct ExerciseCardContent: View {
         }
     }
 
+    /*
     private func inputTypeIcon(_ inputType: String) -> String {
         switch inputType {
         case "inline": return "pencil.line"
@@ -415,6 +336,7 @@ struct ExerciseCardContent: View {
         default: return .gray
         }
     }
+    */
 }
 
 private struct SimilarExercisesSectionView: View {

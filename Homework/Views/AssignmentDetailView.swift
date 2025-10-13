@@ -175,83 +175,88 @@ struct AssignmentDetailView: View {
                     .id(assignment.analysisJSON ?? "")
                 }
             } else {
-                // No analysis exists - show analyze options
-                VStack(spacing: 20) {
-                    Spacer()
-
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    Text("No Analysis Yet")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-
-                    // Show appropriate analyze button based on what's available
-                    if assignment.imageData != nil {
-                        // Has image - offer image analysis
-                        Button(action: { analyzeAssignment() }) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "photo.badge.magnifyingglass")
-                                    .font(.title2)
-                                Text("Analyze Image")
-                                    .font(.headline)
+                // No analysis exists - show original content and analyze options
+                VStack(spacing: 0) {
+                    // Action buttons at the top
+                    HStack(spacing: 12) {
+                        // Analyze with Apple Intelligence button
+                        Button(action: {
+                            if let _ = assignment.imageData {
+                                analyzeAssignment(useCloud: false)
+                            } else if let text = assignment.extractedText {
+                                analyzeTextOnly(text: text)
                             }
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: 200)
-                            .background(Color.green)
-                            .cornerRadius(10)
-                        }
-                    } else if let description = assignment.coursework.description, !description.isEmpty {
-                        // No image but has text - offer text analysis
-                        Button(action: { analyzeTextOnly(text: description) }) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "text.magnifyingglass")
+                        }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: "apple.logo")
                                     .font(.title2)
-                                Text("Analyze Text")
-                                    .font(.headline)
-                                Text("Extract exercises from description")
+                                Text("Apple AI")
                                     .font(.caption)
+                                    .fontWeight(.medium)
                             }
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: 250)
-                            .background(Color.blue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.purple.opacity(0.1))
+                            .foregroundColor(.purple)
                             .cornerRadius(10)
                         }
-                    } else if assignment.firstImageMaterial != nil {
-                        // Has image attachment but not downloaded
-                        Button(action: downloadAndAnalyze) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.title2)
-                                Text("Download & Analyze")
-                                    .font(.headline)
-                            }
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: 200)
-                            .background(Color.blue)
-                            .cornerRadius(10)
-                        }
-                    } else {
-                        // No content to analyze
-                        Text("No content available to analyze")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                        .disabled(isAnalyzing || assignment.isDownloadingImage)
 
-                        if let description = assignment.coursework.description, !description.isEmpty {
-                            Text(description)
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding()
+                        // Analyze with Google Gemini button
+                        if useCloudAnalysis {
+                            Button(action: {
+                                if assignment.imageData != nil {
+                                    analyzeAssignment(useCloud: true)
+                                }
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "cloud.fill")
+                                        .font(.title2)
+                                    Text("Google AI")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.green.opacity(0.1))
+                                .foregroundColor(.green)
+                                .cornerRadius(10)
+                            }
+                            .disabled(isAnalyzing || assignment.isDownloadingImage || assignment.imageData == nil)
+                        }
+                        
+                        // Download and Analyze button
+                        if assignment.imageData == nil && assignment.firstImageMaterial != nil {
+                            Button(action: downloadAndAnalyze) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .font(.title2)
+                                    Text("Download & Analyze")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundColor(.blue)
+                                .cornerRadius(10)
+                            }
+                            .disabled(isAnalyzing || assignment.isDownloadingImage)
                         }
                     }
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
 
-                    Spacer()
+                    Divider()
+
+                    // Original content
+                    if assignment.imageData != nil {
+                        AssignmentImageView(assignment: assignment)
+                    } else {
+                        AssignmentTextView(assignment: assignment)
+                    }
                 }
-                .padding()
             }
         }
         .navigationTitle("Exercises")

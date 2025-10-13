@@ -256,58 +256,64 @@ struct HomeworkDetailView: View {
                         }
                         .id(item.analysisJSON ?? "")
                     } else {
-                        // No analysis exists - show analyze options
-                        VStack(spacing: 20) {
-                            Image(systemName: "doc.text.magnifyingglass")
-                                .font(.system(size: 48))
-                                .foregroundColor(.secondary)
-                            Text("No Analysis Yet")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
+                        // No analysis exists - show image and analyze options
+                        ScrollView {
+                            VStack(spacing: 20) {
+                                if let imageData = item.imageData,
+                                   let uiImage = UIImage(data: imageData) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .cornerRadius(12)
+                                        .shadow(radius: 5)
+                                        .padding()
+                                } else {
+                                    Image(systemName: "doc.text.magnifyingglass")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(.secondary)
+                                }
 
-                            // Show appropriate analyze button based on what's available
-                            if item.imageData != nil {
-                                // Has image - offer image analysis
-                                Button(action: {
-                                    viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: useCloudAnalysis)
-                                }) {
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "photo.badge.magnifyingglass")
-                                            .font(.title2)
-                                        Text("Analyze Image")
-                                            .font(.headline)
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .frame(maxWidth: 200)
-                                    .background(Color.green)
-                                    .cornerRadius(10)
-                                }
-                            } else if let text = item.extractedText, !text.isEmpty {
-                                // No image but has text - offer text analysis
-                                Button(action: { analyzeTextOnly(text: text) }) {
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "text.magnifyingglass")
-                                            .font(.title2)
-                                        Text("Analyze Text")
-                                            .font(.headline)
-                                        Text("Extract exercises from text")
-                                            .font(.caption)
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .frame(maxWidth: 250)
-                                    .background(Color.blue)
-                                    .cornerRadius(10)
-                                }
-                            } else {
-                                // No content to analyze
-                                Text("No content available to analyze")
-                                    .font(.subheadline)
+                                Text("No Analysis Yet")
+                                    .font(.headline)
                                     .foregroundColor(.secondary)
+
+                                HStack(spacing: 16) {
+                                    Button(action: {
+                                        viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
+                                    }) {
+                                        VStack(spacing: 8) {
+                                            Image(systemName: "brain.head.profile")
+                                                .font(.title2)
+                                            Text("Analyze with Apple")
+                                                .font(.headline)
+                                        }
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .frame(maxWidth: .infinity)
+                                        .background(Color.blue)
+                                        .cornerRadius(10)
+                                    }
+
+                                    Button(action: {
+                                        viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
+                                    }) {
+                                        VStack(spacing: 8) {
+                                            Image(systemName: "sparkles")
+                                                .font(.title2)
+                                            Text("Analyze with Cloud")
+                                                .font(.headline)
+                                        }
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .frame(maxWidth: .infinity)
+                                        .background(Color.purple)
+                                        .cornerRadius(10)
+                                    }
+                                }
+                                .padding(.horizontal)
                             }
+                            .padding()
                         }
-                        .padding()
                     }
                 }
                 .tag(1)

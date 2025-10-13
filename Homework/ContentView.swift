@@ -297,63 +297,65 @@ private struct HomeworkExercisesDetailView: View {
                     .id(item.analysisJSON ?? "")
                 }
             } else {
-                // No analysis exists - show analyze options
-                VStack(spacing: 20) {
-                    Spacer()
-
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    Text("No Analysis Yet")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-
-                    // Show appropriate analyze button based on what's available
-                    if item.imageData != nil {
-                        // Has image - offer image analysis
+                // No analysis exists - show original content and analyze options
+                VStack(spacing: 0) {
+                    // Action buttons at the top
+                    HStack(spacing: 12) {
+                        // Analyze with Apple Intelligence button
                         Button(action: {
                             isReanalyzing = true
-                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: useCloudAnalysis)
+                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
                         }) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "photo.badge.magnifyingglass")
+                            VStack(spacing: 6) {
+                                Image(systemName: "apple.logo")
                                     .font(.title2)
-                                Text("Analyze Image")
-                                    .font(.headline)
-                            }
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: 200)
-                            .background(Color.green)
-                            .cornerRadius(10)
-                        }
-                    } else if let text = item.extractedText, !text.isEmpty {
-                        // No image but has text - offer text analysis
-                        Button(action: { analyzeTextOnly(text: text) }) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "text.magnifyingglass")
-                                    .font(.title2)
-                                Text("Analyze Text")
-                                    .font(.headline)
-                                Text("Extract exercises from text")
+                                Text("Apple AI")
                                     .font(.caption)
+                                    .fontWeight(.medium)
                             }
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: 250)
-                            .background(Color.blue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.purple.opacity(0.1))
+                            .foregroundColor(.purple)
                             .cornerRadius(10)
                         }
-                    } else {
-                        // No content to analyze
-                        Text("No content available to analyze")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
+                        .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
 
-                    Spacer()
+                        // Analyze with Google Gemini button
+                        if useCloudAnalysis {
+                            Button(action: {
+                                isReanalyzing = true
+                                viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "cloud.fill")
+                                        .font(.title2)
+                                    Text("Google AI")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.green.opacity(0.1))
+                                .foregroundColor(.green)
+                                .cornerRadius(10)
+                            }
+                            .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                    Divider()
+
+                    // Original content
+                    if item.imageData != nil {
+                        HomeworkImageView(item: item)
+                    } else {
+                        HomeworkTextView(item: item)
+                    }
                 }
-                .padding()
             }
         }
         .navigationTitle("Exercises")

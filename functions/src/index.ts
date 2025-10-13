@@ -212,9 +212,9 @@ Use 'both' when:
    - Formatting and spacing
 5. IMPORTANT: Your 'content' must be the ACCURATE text you actually see in the image, NOT the OCR text. Correct all errors.
 6. Use plain text for mathematical expressions: write "x^2" for x squared, "(a+b)^2" for squared binomial, "2/3" for fractions, etc.
-7. When creating the `content`, it is crucial that you preserve the original formatting and indentation of the exercise as seen in the image. This includes line breaks, spacing, and any other structural elements.
-7. Group related text blocks that belong to the same exercise based on proximity (Y-coordinates) and content continuity.
-8. Your output MUST strictly adhere to the provided JSON schema.`;
+7. When creating the 'content', it is crucial that you preserve the original formatting and indentation of the exercise as seen in the image. This includes line breaks, spacing, and any other structural elements.
+8. Group related text blocks that belong to the same exercise based on proximity (Y-coordinates) and content continuity.
+9. Your output MUST strictly adhere to the provided JSON schema.`;;
 
 
     // 2. Define the user prompt, combining the image and text data

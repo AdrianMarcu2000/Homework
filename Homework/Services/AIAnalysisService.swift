@@ -697,23 +697,33 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
 
         Task {
             do {
+                print("DEBUG HINTS: Generating hints for exercise: \(exercise.exerciseNumber)")
+                print("DEBUG HINTS: Prompt:\n\(prompt)")
+
                 let response = try await session.respond(to: prompt)
+                print("DEBUG HINTS: AI Response:\n\(response.content)")
+
                 let jsonString = extractJSON(from: response.content)
+                print("DEBUG HINTS: Extracted JSON:\n\(jsonString)")
+
 
                 guard let data = jsonString.data(using: .utf8) else {
+                    print("DEBUG HINTS: Failed to convert JSON string to data.")
                     await MainActor.run {
-                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1))))
+                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert JSON string to data"])))
                     }
                     return
                 }
 
                 let decoder = JSONDecoder()
                 let hints = try decoder.decode([Hint].self, from: data)
+                print("DEBUG HINTS: Successfully parsed \(hints.count) hints.")
 
                 await MainActor.run {
                     completion(.success(hints))
                 }
             } catch {
+                print("DEBUG HINTS: Error generating hints: \(error.localizedDescription)")
                 await MainActor.run {
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }

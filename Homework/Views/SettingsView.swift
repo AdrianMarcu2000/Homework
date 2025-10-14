@@ -62,7 +62,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle("Cloud Analysis", isOn: $useCloudAnalysis)
+                    Toggle("Default to cloud analysis", isOn: $useCloudAnalysis)
 
                     HStack {
                         Image(systemName: useCloudAnalysis ? "cloud.fill" : "iphone")

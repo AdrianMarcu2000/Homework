@@ -107,7 +107,7 @@ struct HomeworkListView: View {
 
 /// A row view displaying a single homework item in the list.
 struct HomeworkRowView: View {
-    let item: Item
+    @ObservedObject var item: Item
 
     var body: some View {
         HStack(spacing: 12) {

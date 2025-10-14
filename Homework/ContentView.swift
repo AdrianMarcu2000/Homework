@@ -164,6 +164,11 @@ private struct ContentViewInternal: View {
                 viewModel.performOCR(on: image)
             }
         }
+        .onReceive(viewModel.$newlyCreatedItem) { newItem in
+            if let newItem = newItem {
+                selectedItem = newItem
+            }
+        }
     }
 }
 
@@ -375,7 +380,7 @@ private struct HomeworkExercisesDetailView: View {
                 }
             }
         }
-        .navigationTitle("Exercises")
+        
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: viewModel.isProcessingOCR) { _, newValue in
             if !newValue && !viewModel.isCloudAnalysisInProgress {
@@ -390,7 +395,7 @@ private struct HomeworkExercisesDetailView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 2) {
-                    Text("Exercises")
+                    Text(item.title)
                         .font(.headline)
                         .fontWeight(.semibold)
                     if let timestamp = item.timestamp {

@@ -167,7 +167,7 @@ struct AssignmentDetailView: View {
                                 .fontWeight(.bold)
                                 .padding(.horizontal)
 
-                            ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
+                            ForEach(analysis.exercises, id: \.self) { exercise in
                                 ClassroomExerciseCard(exercise: exercise, assignment: assignment)
                                     .padding(.horizontal)
                             }

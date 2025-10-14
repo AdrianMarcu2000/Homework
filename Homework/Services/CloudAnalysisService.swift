@@ -102,6 +102,17 @@ class CloudAnalysisService {
     ///   - completion: Callback with the analysis result or error
     func analyzeHomework(
         image: UIImage,
+        ocrBlocks: [AIAnalysisService.OCRBlock]
+    ) async -> Result<AIAnalysisService.AnalysisResult, Error> {
+        return await withCheckedContinuation { continuation in
+            analyzeHomework(image: image, ocrBlocks: ocrBlocks) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    func analyzeHomework(
+        image: UIImage,
         ocrBlocks: [AIAnalysisService.OCRBlock],
         completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
     ) {

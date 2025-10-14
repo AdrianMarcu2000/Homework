@@ -31,7 +31,7 @@ class AIAnalysisService {
     }
 
     /// Represents an exercise segment
-    struct Exercise: Codable {
+    struct Exercise: Codable, Hashable {
         let exerciseNumber: String
         let type: String
         let fullContent: String
@@ -118,6 +118,18 @@ class AIAnalysisService {
     ///   - ocrBlocks: Array of OCR text blocks with Y coordinates
     ///   - progressHandler: Optional callback for progress updates (current, total)
     ///   - completion: Callback with the analysis result or error
+    func analyzeHomeworkWithSegments(
+        image: UIImage,
+        ocrBlocks: [OCRBlock],
+        progressHandler: ((Int, Int) -> Void)? = nil
+    ) async -> Result<AnalysisResult, Error> {
+        return await withCheckedContinuation { continuation in
+            analyzeHomeworkWithSegments(image: image, ocrBlocks: ocrBlocks, progressHandler: progressHandler) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
     func analyzeHomeworkWithSegments(
         image: UIImage,
         ocrBlocks: [OCRBlock],

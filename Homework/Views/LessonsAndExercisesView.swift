@@ -31,7 +31,7 @@ struct LessonsAndExercisesView: View {
                         .font(.title3)
                         .fontWeight(.bold)
 
-                    ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
+                    ForEach(analysis.exercises, id: \.self) { exercise in
                         ExerciseCard(exercise: exercise, homeworkItem: homeworkItem)
                     }
                 }

@@ -54,10 +54,15 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// The item being re-analyzed (if any)
     @Published var reanalyzingItem: Item?
 
+    /// The newly created homework item
+    @Published var newlyCreatedItem: Item?
+
     // MARK: - Private Properties
 
     /// The Core Data managed object context for database operations (used for initialization)
     private let initialContext: NSManagedObjectContext
+
+    @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
 
     // MARK: - Initialization
 
@@ -114,40 +119,59 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// - Parameter image: The UIImage to perform text recognition on
     func performOCR(on image: UIImage) {
         let newItem = createHomeworkItem(from: image, context: initialContext)
+        self.newlyCreatedItem = newItem
         selectedImage = nil
         showImagePicker = false
+        let useCloud = self.useCloudAnalysis
 
         Task.detached(priority: .background) {
             do {
                 let ocrResult = try await OCRService.shared.recognizeTextWithBlocks(from: image)
-                
                 let aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
 
-                await AIAnalysisService.shared.analyzeHomeworkWithSegments(
-                    image: image,
-                    ocrBlocks: aiBlocks,
-                    progressHandler: { current, total in
-                        // Progress handling can be added here if needed in the future
-                    }
-                ) { result in
-                    DispatchQueue.main.async {
-                        switch result {
-                        case .success(let analysis):
-                            do {
-                                let encoder = JSONEncoder()
-                                let jsonData = try encoder.encode(analysis)
-                                newItem.analysisJSON = String(data: jsonData, encoding: .utf8)
-                            } catch {
-                                newItem.analysisJSON = "failed"
-                            }
-                        case .failure:
+                let analysisResult: Result<AIAnalysisService.AnalysisResult, Error>
+                if useCloud {
+                    analysisResult = await CloudAnalysisService.shared.analyzeHomework(image: image, ocrBlocks: aiBlocks)
+                } else {
+                    analysisResult = await AIAnalysisService.shared.analyzeHomeworkWithSegments(image: image, ocrBlocks: aiBlocks)
+                }
+                
+                DispatchQueue.main.async {
+                    switch analysisResult {
+                    case .success(let analysis):
+                        do {
+                            let encoder = JSONEncoder()
+                            let jsonData = try encoder.encode(analysis)
+                            newItem.analysisJSON = String(data: jsonData, encoding: .utf8)
+                        } catch {
                             newItem.analysisJSON = "failed"
                         }
-                        
-                        do {
-                            try self.initialContext.save()
-                        } catch {
-                            print("Error saving context after analysis: \(error)")
+                    case .failure:
+                        newItem.analysisJSON = "failed"
+                    }
+                    
+                    do {
+                        try self.initialContext.save()
+                    } catch {
+                        print("Error saving context after analysis: \(error)")
+                    }
+                    
+                    if case .success(let analysis) = analysisResult {
+                        AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
+                            DispatchQueue.main.async {
+                                switch summaryResult {
+                                case .success(let summary):
+                                    newItem.extractedText = summary
+                                case .failure:
+                                    newItem.extractedText = "Found \(analysis.exercises.count) exercise(s)."
+                                }
+                                
+                                do {
+                                    try self.initialContext.save()
+                                } catch {
+                                    print("Error saving context after summary generation: \(error)")
+                                }
+                            }
                         }
                     }
                 }

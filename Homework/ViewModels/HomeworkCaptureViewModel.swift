@@ -68,6 +68,27 @@ class HomeworkCaptureViewModel: ObservableObject {
         self.initialContext = context
     }
 
+    /// Creates a new homework item with a processing status.
+    ///
+    /// - Parameters:
+    ///   - image: The homework image.
+    ///   - context: The Core Data context.
+    /// - Returns: The newly created homework item.
+    func createHomeworkItem(from image: UIImage, context: NSManagedObjectContext) -> Item {
+        let newItem = Item(context: context)
+        newItem.timestamp = Date()
+        newItem.imageData = image.jpegData(compressionQuality: 0.8)
+        newItem.analysisJSON = "inProgress" // Set status to inProgress
+
+        do {
+            try context.save()
+        } catch {
+            let nsError = error as NSError
+            fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+        }
+        return newItem
+    }
+
     // MARK: - Public Methods
 
     /// Selects the camera as the image source and presents the image picker.
@@ -92,32 +113,52 @@ class HomeworkCaptureViewModel: ObservableObject {
     ///
     /// - Parameter image: The UIImage to perform text recognition on
     func performOCR(on image: UIImage) {
-        isProcessingOCR = true
-        showTextSheet = true
-        extractedText = ""
-        ocrBlocks = []
-        analysisResult = nil
-        analysisProgress = nil
-        currentImage = image // Store for cloud analysis
+        let newItem = createHomeworkItem(from: image, context: initialContext)
+        selectedImage = nil
+        showImagePicker = false
 
-        // Step 1: Perform OCR with block position information
-        OCRService.shared.recognizeTextWithBlocks(from: image) { [weak self] result in
-            guard let self = self else { return }
+        Task.detached(priority: .background) {
+            do {
+                let ocrResult = try await OCRService.shared.recognizeTextWithBlocks(from: image)
+                
+                let aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
 
-            switch result {
-            case .success(let ocrResult):
-                DispatchQueue.main.async {
-                    self.extractedText = ocrResult.fullText
-                    self.ocrBlocks = ocrResult.blocks
+                await AIAnalysisService.shared.analyzeHomeworkWithSegments(
+                    image: image,
+                    ocrBlocks: aiBlocks,
+                    progressHandler: { current, total in
+                        // Progress handling can be added here if needed in the future
+                    }
+                ) { result in
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success(let analysis):
+                            do {
+                                let encoder = JSONEncoder()
+                                let jsonData = try encoder.encode(analysis)
+                                newItem.analysisJSON = String(data: jsonData, encoding: .utf8)
+                            } catch {
+                                newItem.analysisJSON = "failed"
+                            }
+                        case .failure:
+                            newItem.analysisJSON = "failed"
+                        }
+                        
+                        do {
+                            try self.initialContext.save()
+                        } catch {
+                            print("Error saving context after analysis: \(error)")
+                        }
+                    }
                 }
-
-                // Step 2: Perform AI analysis to segment the content
-                self.analyzeHomeworkContent(image: image, ocrBlocks: ocrResult.blocks)
-
-            case .failure(let error):
+            } catch {
                 DispatchQueue.main.async {
-                    self.isProcessingOCR = false
-                    self.extractedText = "OCR Error: \(error.localizedDescription)"
+                    newItem.analysisJSON = "failed"
+                    do {
+                        try self.initialContext.save()
+                    } catch {
+                        print("Error saving context after OCR failure: \(error)")
+                    }
                 }
             }
         }

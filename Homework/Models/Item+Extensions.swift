@@ -8,8 +8,29 @@
 import Foundation
 import CoreData
 
+/// The analysis status of a homework item
+public enum AnalysisStatus: String {
+    case notStarted
+    case inProgress
+    case completed
+    case failed
+}
+
 /// Extension to make Item conform to AnalyzableHomework protocol
 extension Item: AnalyzableHomework {
+
+    /// The analysis status of the homework item
+    public var analysisStatus: AnalysisStatus {
+        if analysisJSON == "inProgress" {
+            return .inProgress
+        } else if analysisJSON == "failed" {
+            return .failed
+        } else if analysisJSON != nil {
+            return .completed
+        } else {
+            return .notStarted
+        }
+    }
     public var id: String {
         self.objectID.uriRepresentation().absoluteString
     }

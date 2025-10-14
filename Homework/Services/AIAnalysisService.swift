@@ -710,7 +710,7 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
                 guard let data = jsonString.data(using: .utf8) else {
                     print("DEBUG HINTS: Failed to convert JSON string to data.")
                     await MainActor.run {
-                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert JSON string to data"])))
+                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert JSON string to data"]))))
                     }
                     return
                 }

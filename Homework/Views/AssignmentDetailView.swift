@@ -94,31 +94,33 @@ struct AssignmentDetailView: View {
                         }
 
                         // Analyze with Apple Intelligence button - always show
-                        Button(action: {
-                            isReanalyzing = true
-                            if assignment.imageData != nil {
-                                analyzeAssignment(useCloud: false)
-                            } else if let text = assignment.extractedText {
-                                analyzeTextOnly(text: text)
+                        if !isAnalyzing {
+                            Button(action: {
+                                isReanalyzing = true
+                                if assignment.imageData != nil {
+                                    analyzeAssignment(useCloud: false)
+                                } else if let text = assignment.extractedText {
+                                    analyzeTextOnly(text: text)
+                                }
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "apple.logo")
+                                        .font(.title2)
+                                    Text("Apple AI")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.purple.opacity(0.1))
+                                .foregroundColor(.purple)
+                                .cornerRadius(10)
                             }
-                        }) {
-                            VStack(spacing: 6) {
-                                Image(systemName: "apple.logo")
-                                    .font(.title2)
-                                Text("Apple AI")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.purple.opacity(0.1))
-                            .foregroundColor(.purple)
-                            .cornerRadius(10)
+                            .disabled(isReanalyzing || assignment.isDownloadingImage)
                         }
-                        .disabled(isReanalyzing || isAnalyzing || assignment.isDownloadingImage)
 
                         // Analyze with Google Gemini button - show when cloud analysis is enabled
-                        if useCloudAnalysis {
+                        if useCloudAnalysis && !isAnalyzing {
                             Button(action: {
                                 isReanalyzing = true
                                 if assignment.imageData != nil {
@@ -138,7 +140,7 @@ struct AssignmentDetailView: View {
                                 .foregroundColor(.green)
                                 .cornerRadius(10)
                             }
-                            .disabled(isReanalyzing || isAnalyzing || assignment.isDownloadingImage || assignment.imageData == nil)
+                            .disabled(isReanalyzing || assignment.isDownloadingImage || assignment.imageData == nil)
                         }
                     }
                     .padding(.horizontal)

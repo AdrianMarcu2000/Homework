@@ -169,7 +169,7 @@ private struct ContentViewInternal: View {
 
 /// A simplified detail view that shows exercises directly without intermediate tabs
 private struct HomeworkExercisesDetailView: View {
-    let item: Item
+    @ObservedObject var item: Item
     var viewModel: HomeworkCaptureViewModel
     @Environment(\.managedObjectContext) private var viewContext
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
@@ -300,49 +300,50 @@ private struct HomeworkExercisesDetailView: View {
                 // No analysis exists - show original content and analyze options
                 VStack(spacing: 0) {
                     // Action buttons at the top
-                    HStack(spacing: 12) {
-                        // Analyze with Apple Intelligence button
-                        Button(action: {
-                            isReanalyzing = true
-                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
-                        }) {
-                            VStack(spacing: 6) {
-                                Image(systemName: "apple.logo")
-                                    .font(.title2)
-                                Text("Apple AI")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.purple.opacity(0.1))
-                            .foregroundColor(.purple)
-                            .cornerRadius(10)
-                        }
-                        .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
-
-                        // Analyze with Google Gemini button
-                        if useCloudAnalysis {
-                            Button(action: {
-                                isReanalyzing = true
-                                viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
-                            }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "cloud.fill")
-                                        .font(.title2)
-                                    Text("Google AI")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.green.opacity(0.1))
-                                .foregroundColor(.green)
-                                .cornerRadius(10)
-                            }
-                            .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
-                        }
-                    }
+                                        HStack(spacing: 12) {
+                                                                    // Analyze with Apple Intelligence button
+                                                                    if item.analysisStatus != .inProgress {
+                                                                        Button(action: {
+                                                                            isReanalyzing = true
+                                                                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
+                                                                        }) {
+                                                                            VStack(spacing: 6) {
+                                                                                Image(systemName: "apple.logo")
+                                                                                    .font(.title2)
+                                                                                Text("Apple AI")
+                                                                                    .font(.caption)
+                                                                                    .fontWeight(.medium)
+                                                                            }
+                                                                            .frame(maxWidth: .infinity)
+                                                                            .padding(.vertical, 12)
+                                                                            .background(Color.purple.opacity(0.1))
+                                                                            .foregroundColor(.purple)
+                                                                            .cornerRadius(10)
+                                                                        }
+                                                                        .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+                                                                    }
+                                            
+                                                                    // Analyze with Google Gemini button
+                                                                    if useCloudAnalysis && item.analysisStatus != .inProgress {
+                                                                        Button(action: {
+                                                                            isReanalyzing = true
+                                                                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
+                                                                        }) {
+                                                                            VStack(spacing: 6) {
+                                                                                Image(systemName: "cloud.fill")
+                                                                                    .font(.title2)
+                                                                                Text("Google AI")
+                                                                                    .font(.caption)
+                                                                                    .fontWeight(.medium)
+                                                                            }
+                                                                            .frame(maxWidth: .infinity)
+                                                                            .padding(.vertical, 12)
+                                                                            .background(Color.green.opacity(0.1))
+                                                                            .foregroundColor(.green)
+                                                                            .cornerRadius(10)
+                                                                        }
+                                                                        .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+                                                                    }                    }
                     .padding(.horizontal)
                     .padding(.top, 12)
                     .padding(.bottom, 8)
@@ -350,10 +351,26 @@ private struct HomeworkExercisesDetailView: View {
                     Divider()
 
                     // Original content
-                    if item.imageData != nil {
-                        HomeworkImageView(item: item)
-                    } else {
-                        HomeworkTextView(item: item)
+                    ZStack {
+                        if item.imageData != nil {
+                            HomeworkImageView(item: item)
+                        } else {
+                            HomeworkTextView(item: item)
+                        }
+
+                        if item.analysisStatus == .inProgress {
+                            Color.black.opacity(0.4)
+                                .edgesIgnoringSafeArea(.all)
+                            VStack {
+                                ProgressView()
+                                    .scaleEffect(1.5)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                Text("Analyzing...")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.top)
+                            }
+                        }
                     }
                 }
             }

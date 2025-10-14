@@ -169,6 +169,13 @@ private struct ContentViewInternal: View {
                 selectedItem = newItem
             }
         }
+        .alert(isPresented: $viewModel.showCloudAnalysisAlert) {
+            Alert(
+                title: Text("Apple Intelligence Not Available"),
+                message: Text("Please enable Cloud Analysis in settings to use this feature."),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 }
 

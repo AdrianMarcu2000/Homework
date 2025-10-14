@@ -57,6 +57,9 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// The newly created homework item
     @Published var newlyCreatedItem: Item?
 
+    /// Controls the visibility of the cloud analysis alert
+    @Published var showCloudAnalysisAlert = false
+
     // MARK: - Private Properties
 
     /// The Core Data managed object context for database operations (used for initialization)
@@ -118,11 +121,15 @@ class HomeworkCaptureViewModel: ObservableObject {
     ///
     /// - Parameter image: The UIImage to perform text recognition on
     func performOCR(on image: UIImage) {
+        if !AIAnalysisService.shared.isModelAvailable && !useCloudAnalysis {
+            self.showCloudAnalysisAlert = true
+            return
+        }
+
         let newItem = createHomeworkItem(from: image, context: initialContext)
-        self.newlyCreatedItem = newItem
         selectedImage = nil
         showImagePicker = false
-        let useCloud = self.useCloudAnalysis
+        let useCloud = self.useCloudAnalysis || !AIAnalysisService.shared.isModelAvailable
 
         Task.detached(priority: .background) {
             do {

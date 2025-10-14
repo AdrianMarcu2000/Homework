@@ -136,11 +136,6 @@ class AIAnalysisService {
         progressHandler: ((Int, Int) -> Void)? = nil,
         completion: @escaping (Result<AnalysisResult, Error>) -> Void
     ) {
-        // Check if model is available
-        guard isModelAvailable else {
-            completion(.failure(AIAnalysisError.analysisUnavailable))
-            return
-        }
 
         // Step 1: Segment the image based on OCR gaps
         let segments = ImageSegmentationService.shared.segmentImage(

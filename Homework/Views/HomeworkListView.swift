@@ -42,6 +42,9 @@ struct HomeworkListView: View {
     /// Track which sections are expanded
     @State private var expandedSections: Set<String> = []
 
+    /// Track edit mode
+    @Environment(\.editMode) private var editMode
+
     // MARK: - Body
 
     /// Grouped items by subject
@@ -100,24 +103,35 @@ struct HomeworkListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                HStack(spacing: 12) {
-                    EditButton()
-
-                    Button(action: { showSettings = true }) {
-                        Label("Settings", systemImage: "gearshape")
-                            .labelStyle(.iconOnly)
+                Button(action: {
+                    withAnimation {
+                        if editMode?.wrappedValue == .active {
+                            editMode?.wrappedValue = .inactive
+                        } else {
+                            editMode?.wrappedValue = .active
+                        }
                     }
+                }) {
+                    Text(editMode?.wrappedValue == .active ? "Done" : "Edit")
+                        .fontWeight(.medium)
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
-                    Button(action: onTakePhoto) {
-                        Label("Camera", systemImage: "camera")
-                            .labelStyle(.iconOnly)
+                    if editMode?.wrappedValue != .active {
+                        Button(action: onTakePhoto) {
+                            Label("Camera", systemImage: "camera")
+                                .labelStyle(.iconOnly)
+                        }
+
+                        Button(action: onChooseFromLibrary) {
+                            Label("Library", systemImage: "photo")
+                                .labelStyle(.iconOnly)
+                        }
                     }
 
-                    Button(action: onChooseFromLibrary) {
-                        Label("Library", systemImage: "photo")
+                    Button(action: { showSettings = true }) {
+                        Label("Settings", systemImage: "gearshape")
                             .labelStyle(.iconOnly)
                     }
                 }

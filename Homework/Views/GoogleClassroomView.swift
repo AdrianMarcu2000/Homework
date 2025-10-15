@@ -31,6 +31,17 @@ struct GoogleClassroomView: View {
                 signInPromptView
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: { showSettings = true }) {
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
+                }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
         .onAppear {
             if authService.isSignedIn {
                 loadCourses()
@@ -120,21 +131,11 @@ struct GoogleClassroomView: View {
                             )
                         }
                     }
-                                    .listStyle(.sidebar)
-                                    .refreshable {
-                                        loadCourses()
-                                    }
-                                    .toolbar {
-                                        ToolbarItem(placement: .navigationBarTrailing) {
-                                            Button(action: { showSettings = true }) {
-                                                Label("Settings", systemImage: "gearshape")
-                                                    .labelStyle(.iconOnly)
-                                            }
-                                        }
-                                    }
-                                    .sheet(isPresented: $showSettings) {
-                                        SettingsView()
-                                    }                }
+                    .listStyle(.sidebar)
+                    .refreshable {
+                        loadCourses()
+                    }
+                }
             }
 
             // Login status and sign out - always at bottom

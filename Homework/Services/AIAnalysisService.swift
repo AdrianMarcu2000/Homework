@@ -194,6 +194,14 @@ RULES:
 - Questions or imperatives (Find, Solve, Calculate, Write, Complete, Expand) = EXERCISE
 - Pure headers/footers/titles without questions = SKIP
 
+LATEX FORMATTING FOR fullContent:
+- For chemical formulas use proper LaTeX: CO\\textsubscript{2} or \\ce{CO2}
+- For math expressions use: \\(expression\\) for inline, \\[expression\\] for block
+- For subscripts: H\\textsubscript{2}O or \\(H_2O\\)
+- For superscripts: cm\\textsuperscript{3} or \\(cm^3\\)
+- CRITICAL: Include the backslash! Write \\textsubscript NOT textsubscript
+- Examples: "Atmosphere (\\ce{CO2})" or "Temperature (°C)"
+
 RESPONSE FORMAT:
 You must respond with a JSON object that has a "type" field.
 If the segment is an exercise, the JSON should be:
@@ -203,6 +211,8 @@ If the segment should be skipped, the JSON should be:
 {\"type\":\"skip\"}
 
 Types: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, other
+
+IMPORTANT: In fullContent, fix OCR errors and format chemical/math notation properly with LaTeX commands including backslashes.
 
 ---TEXT SEGMENT TO ANALYZE---
 \(truncatedText)

@@ -24,6 +24,9 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// Controls the visibility of the image picker sheet
     @Published var showImagePicker = false
 
+    /// Controls the visibility of the document picker sheet
+    @Published var showDocumentPicker = false
+
     /// Determines whether to use camera or photo library
     @Published var imageSourceType: UIImagePickerController.SourceType = .camera
 
@@ -109,6 +112,11 @@ class HomeworkCaptureViewModel: ObservableObject {
     func selectPhotoLibrary() {
         imageSourceType = .photoLibrary
         showImagePicker = true
+    }
+
+    /// Presents the document picker to allow users to select image files from the Files app.
+    func selectDocumentPicker() {
+        showDocumentPicker = true
     }
 
     /// Performs OCR on the selected image and displays the results.

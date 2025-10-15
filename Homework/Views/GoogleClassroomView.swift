@@ -35,8 +35,8 @@ struct GoogleClassroomView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: { showSettings = true }) {
                     Label("Settings", systemImage: "gearshape")
-                        .labelStyle(.iconOnly)
                 }
+                .labelStyle(.iconOnly)
             }
         }
         .sheet(isPresented: $showSettings) {

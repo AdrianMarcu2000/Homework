@@ -96,6 +96,7 @@ private struct ContentViewInternal: View {
                     HomeworkListView(
                         onTakePhoto: viewModel.selectCamera,
                         onChooseFromLibrary: viewModel.selectPhotoLibrary,
+                        onLoadFile: viewModel.selectDocumentPicker,
                         selectedItem: $selectedItem,
                         viewModel: viewModel
                     )
@@ -158,6 +159,9 @@ private struct ContentViewInternal: View {
                 selectedImage: $viewModel.selectedImage,
                 sourceType: viewModel.imageSourceType
             )
+        }
+        .sheet(isPresented: $viewModel.showDocumentPicker) {
+            DocumentPicker(selectedImage: $viewModel.selectedImage)
         }
         .onChange(of: viewModel.selectedImage) { oldValue, newValue in
             if let image = newValue {

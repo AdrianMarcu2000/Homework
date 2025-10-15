@@ -30,6 +30,9 @@ struct HomeworkListView: View {
     /// Callback triggered when the photo library button is tapped
     var onChooseFromLibrary: () -> Void
 
+    /// Callback triggered when the load file button is tapped
+    var onLoadFile: () -> Void
+
     /// Binding to the currently selected item
     @Binding var selectedItem: Item?
 
@@ -116,25 +119,35 @@ struct HomeworkListView: View {
                         .fontWeight(.medium)
                 }
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 12) {
-                    if editMode?.wrappedValue != .active {
-                        Button(action: onTakePhoto) {
-                            Label("Camera", systemImage: "camera")
-                                .labelStyle(.iconOnly)
-                        }
 
-                        Button(action: onChooseFromLibrary) {
-                            Label("Library", systemImage: "photo")
-                                .labelStyle(.iconOnly)
-                        }
+            if editMode?.wrappedValue != .active {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: onTakePhoto) {
+                        Label("Camera", systemImage: "camera")
                     }
-
-                    Button(action: { showSettings = true }) {
-                        Label("Settings", systemImage: "gearshape")
-                            .labelStyle(.iconOnly)
-                    }
+                    .labelStyle(.iconOnly)
                 }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: onChooseFromLibrary) {
+                        Label("Library", systemImage: "photo")
+                    }
+                    .labelStyle(.iconOnly)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: onLoadFile) {
+                        Label("Load File", systemImage: "folder")
+                    }
+                    .labelStyle(.iconOnly)
+                }
+            }
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: { showSettings = true }) {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .labelStyle(.iconOnly)
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -605,6 +618,7 @@ private let itemFormatter: DateFormatter = {
         HomeworkListView(
             onTakePhoto: {},
             onChooseFromLibrary: {},
+            onLoadFile: {},
             selectedItem: .constant(nil),
             viewModel: mockViewModel
         )

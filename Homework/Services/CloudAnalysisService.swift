@@ -282,7 +282,7 @@ class CloudAnalysisService {
                 let exercise = AIAnalysisService.Exercise(
                     exerciseNumber: exerciseNumber,
                     type: inferExerciseType(from: section.content),
-                    fullContent: section.content,
+                    fullContent: addBackslashesToLaTeX(section.content),
                     startY: startY,
                     endY: endY,
                     subject: section.subject,
@@ -308,6 +308,13 @@ class CloudAnalysisService {
         print("DEBUG CLOUD: ✅ Successfully converted to \(sortedExercises.count) exercises")
 
         return AIAnalysisService.AnalysisResult(exercises: sortedExercises)
+    }
+
+    private static func addBackslashesToLaTeX(_ text: String) -> String {
+        if text.contains("\\frac") {
+            return "\\(" + text + "\\)"
+        }
+        return text
     }
 
     /// Extracts exercise number from title

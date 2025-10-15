@@ -29,7 +29,7 @@ const analysisSchema = {
                     },
                     content: {
                         type: "STRING",
-                        description: "The complete, CORRECTED text content of this exercise. Read the text directly from the IMAGE to ensure accuracy, especially for mathematical notation, special characters, and symbols. The OCR data is a REFERENCE for positioning only and may contain errors. Your content must be the ACTUAL text you see in the image, properly formatted and error-free."
+                        description: "The complete, CORRECTED text content of this exercise, with mathematical expressions in LaTeX format. Read the text directly from the IMAGE to ensure accuracy, especially for mathematical notation, special characters, and symbols. The OCR data is a REFERENCE for positioning only and may contain errors. Your content must be the ACTUAL text you see in the image, properly formatted and error-free."
                     },
                     subject: {
                         type: "STRING",
@@ -211,7 +211,7 @@ Use 'both' when:
    - Accented letters and non-English characters
    - Formatting and spacing
 5. IMPORTANT: Your 'content' must be the ACCURATE text you actually see in the image, NOT the OCR text. Correct all errors.
-6. Use plain text for mathematical expressions: write "x^2" for x squared, "(a+b)^2" for squared binomial, "2/3" for fractions, etc.
+6. For all mathematical content, you MUST use LaTeX notation. Enclose inline math expressions with \( and \). Enclose block math expressions with \[ and \]. For example: \(x^2 + y^2 = r^2\) or \[\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\]
 7. When creating the 'content', it is crucial that you preserve the original formatting and indentation of the exercise as seen in the image. This includes line breaks, spacing, and any other structural elements.
 8. Group related text blocks that belong to the same exercise based on proximity (Y-coordinates) and content continuity.
 9. Your output MUST strictly adhere to the provided JSON schema.`;;
@@ -229,7 +229,7 @@ IMPORTANT INSTRUCTIONS:
 2. For exercise CONTENT, read the text directly from the IMAGE - the OCR may have errors
 3. Correct all OCR errors, especially mathematical notation, special characters, and symbols
 4. Provide clean, accurate text that matches what you see in the image
-5. Use plain text notation for math: "x^2", "(a+b)^2", "2/3", etc.
+5. For all mathematical content, you MUST use LaTeX notation. Enclose inline math expressions with \( and \). Enclose block math expressions with \[ and \].
 
 Identify and segment each EXERCISE with corrected, accurate content. Mark headers, footers, titles, and non-exercise content as SKIP. Produce the structured JSON analysis following the provided schema.`;
 
@@ -282,7 +282,7 @@ Identify and segment each EXERCISE with corrected, accurate content. Mark header
             const elapsed = Date.now() - startTime;
             functions.logger.info(`⏱️  Gemini API responded in ${elapsed}ms with status ${response.status}`);
 
-            // Cast result to 'any' to resolve the TS18046 error, as its structure is complex/external.
+            // Cast result to 'any' to resolve the TS18046 error, as its structure is complex/external. 
             const result: any = await response.json(); 
 
             if (!response.ok) {
@@ -302,13 +302,7 @@ Identify and segment each EXERCISE with corrected, accurate content. Mark header
             functions.logger.info(`✅ Successfully analyzed homework. Sections: ${structuredOutput.sections?.length || 0}`);
 
             // Log exercise details
-            if (structuredOutput.sections) {
-                const exercises = structuredOutput.sections.filter((s: any) => s.type === 'EXERCISE');
-                functions.logger.info(`📝 Found ${exercises.length} exercises:`);
-                exercises.forEach((ex: any, idx: number) => {
-                    functions.logger.info(`   ${idx + 1}. "${ex.title}" - Subject: ${ex.subject || 'N/A'}, Input: ${ex.inputType || 'N/A'}, Type: ${ex.type || 'N/A'}`);
-                });
-            }
+            functions.logger.info("structuredOutput:", structuredOutput);
 
             // Return the structured JSON to the client
             res.status(200).json(structuredOutput);

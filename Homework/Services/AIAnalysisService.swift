@@ -102,7 +102,7 @@ class AIAnalysisService {
     /// Progressive hint for an exercise
     struct Hint: Codable, Identifiable {
         var id: UUID { UUID() }
-        let level: Int // 1, 2, or 3
+        let level: Int // 1, 2, 3 or 4
         let title: String
         let content: String
 
@@ -197,10 +197,10 @@ RULES:
 RESPONSE FORMAT:
 You must respond with a JSON object that has a "type" field.
 If the segment is an exercise, the JSON should be:
-{"type":"exercise", "exercise": {"exerciseNumber":"NUM", "type":"TYPE", "fullContent":"TEXT", "startY":\(segment.startY), "endY":\(segment.endY)}}
+{\"type\":\"exercise\", \"exercise\": {\"exerciseNumber\":\"NUM\", \"type\":\"TYPE\", \"fullContent\":\"TEXT\", \"startY\":\(segment.startY), \"endY\":\(segment.endY)}}
 
 If the segment should be skipped, the JSON should be:
-{"type":"skip"}
+{\"type\":\"skip\"}
 
 Types: mathematical, multiple_choice, short_answer, essay, fill_in_blanks, true_or_false, matching, calculation, proof, other
 
@@ -217,7 +217,7 @@ Return ONLY the JSON object:
                     print("DEBUG: AI Response for segment \(index + 1):")
                     print(response.content)
 
-                    let jsonString = extractJSON(from: response.content)
+                    let jsonString = response.content
 
                     print("DEBUG: Extracted JSON:")
                     print(jsonString)
@@ -284,17 +284,17 @@ Return ONLY the JSON object:
 
         // Format OCR blocks for the prompt
         let ocrBlocksList = ocrBlocks.map { block in
-            "Y: \(String(format: "%.3f", block.y)) - \"\(block.text)\""
+            "Y: \\(String(format: \"%.3f\", block.y)) - \"\(block.text)\""
         }.joined(separator: "\n")
 
         let prompt = """
-        You are an educational content analyzer specializing in homework exercise identification. Analyze the provided homework page to identify ALL exercises.
+        You are a helpful assistant that is an expert in LaTeX and always returns valid LaTeX. You are an educational content analyzer specializing in homework exercise identification. Analyze the provided homework page to identify ALL exercises.
 
         IMPORTANT: Return ONLY valid JSON. Do not include any explanatory text before or after the JSON. Your entire response must be parseable JSON.
 
         Input Data:
         - Image: A homework page containing exercises
-        - OCR text blocks with Y coordinates: "\(ocrBlocksList)"
+        - OCR text blocks with Y coordinates: \"\(ocrBlocksList)\" 
 
         Core Classification Rules:
 
@@ -327,7 +327,7 @@ Return ONLY the JSON object:
                 {
                     "exerciseNumber": "1",
                     "type": "mathematical",
-                    "fullContent": "Your cleaned-up and properly formatted understanding of the exercise text, with corrected OCR errors and clear problem statement",
+                    "fullContent": "Solve the following equation: \\(x^2 + 2x + 1 = 0\\)",
                     "startY": 0.300,
                     "endY": 0.420
                 }
@@ -342,12 +342,12 @@ Return ONLY the JSON object:
         - Do not overlap content boundaries
         - For fullContent: Provide YOUR interpretation and understanding of the text, not just raw OCR. When creating the `fullContent`, it is crucial that you preserve the original formatting and indentation of the exercise as seen in the image. This includes line breaks, spacing, and any other structural elements.
         - Fix any OCR errors or typos in fullContent
-        - Format mathematical expressions clearly in plain text
         - Make the content clear and readable
-        - Preserve all important information
-        - CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
-        - Use plain text for math: write "x^2" not "x squared in LaTeX", write "x * y" or "x times y" not "x cdot y", write "(a+b)^2" not LaTeX notation.
-        - Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.
+        - CRITICAL: Pay close attention to the LaTeX formatting. For all mathematical content, you MUST use LaTeX notation.
+        - Enclose inline math expressions with \\( and \\).
+        - Enclose block math expressions with \\[ and \\].
+        - For example: \\(x^2 + y^2 = r^2\\) or \\[\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}\\\\]
+        - Ensure all backslashes in LaTeX are properly escaped for JSON output (e.g., \\\\(x^2\\\\) becomes \\\\\\\\(x^2\\\\\\\\) in the final JSON string).
         """
 
         // Use Apple Intelligence to analyze the image with the prompt
@@ -356,7 +356,7 @@ Return ONLY the JSON object:
             case .success(let responseText):
                 do {
                     // Extract JSON from the response (in case there's extra text)
-                    let jsonString = self.extractJSON(from: responseText)
+                    let jsonString = responseText
 
                     // Parse the JSON response
                     guard let data = jsonString.data(using: .utf8) else {
@@ -399,8 +399,11 @@ Return ONLY the JSON object:
             return
         }
 
+        // Reset session to clear any accumulated context
+        session = LanguageModelSession()
+
         let prompt = """
-        You are an educational exercise generator. Your task is to generate 3 similar practice exercises based on the original exercise provided below. If the exercise has subexercises keep the number of subexercises for each.
+        You are a helpful assistant that is an expert in LaTeX and always returns valid LaTeX. You are an educational exercise generator. Your task is to generate 3 similar practice exercises based on the original exercise provided below. If the exercise has subexercises keep the number of subexercises for each.
 
         Original Exercise:
         Type: \(exercise.type)
@@ -413,27 +416,28 @@ Return ONLY the JSON object:
 
         IMPORTANT:
         - Return ONLY valid JSON. Do not include any explanatory text before or after the JSON.
-        - CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
-        - Use plain text for math: write "x^2" not "x squared in LaTeX", write "x * y" or "x times y" not "x cdot y", write "(a+b)^2" not LaTeX notation.
-        - Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.
+        - CRITICAL: Pay close attention to the LaTeX formatting. For all mathematical content, you MUST use LaTeX notation.
+        - Enclose inline math expressions with \\( and \\).
+        - Enclose block math expressions with \\[ and \\].
+        - Ensure all backslashes in LaTeX are properly escaped for JSON output (e.g., \\\\(x^2\\\\) becomes \\\\\\\\(x^2\\\\\\\\) in the final JSON string).
 
         Return a JSON array with this exact structure:
         [
             {
                 "exerciseNumber": "1",
-                "type": "\(exercise.type)",
+                "type": \"\(exercise.type)\"",
                 "content": "The exercise text for the 'easier' difficulty level goes here.",
                 "difficulty": "same"
             },
             {
                 "exerciseNumber": "2",
-                "type": "\(exercise.type)",
+                "type": \"\(exercise.type)\"",
                 "content": "The exercise text for the 'same' difficulty level goes here.",
                 "difficulty": "easier"
             },
             {
                 "exerciseNumber": "3",
-                "type": "\(exercise.type)",
+                "type": \"\(exercise.type)\"",
                 "content": "The exercise text for the 'harder' difficulty level goes here.",
                 "difficulty": "harder"
             }
@@ -442,9 +446,10 @@ Return ONLY the JSON object:
 
         Task {
             do {
+                print("DEBUG: Prompt for similar exercises: \(prompt)")
                 let response = try await session.respond(to: prompt)
 
-                let jsonString = extractJSON(from: response.content)
+                let jsonString = response.content
 
                 guard let data = jsonString.data(using: .utf8) else {
                     await MainActor.run {
@@ -486,7 +491,7 @@ Return ONLY the JSON object:
 
         let prompt = """
 INSTRUCTIONS:
-You are an educational content analyzer. Analyze the provided text to identify ALL exercises.
+You are a helpful assistant that is an expert in LaTeX and always returns valid LaTeX. You are an educational content analyzer. Analyze the provided text to identify ALL exercises.
 
 EXERCISE DETECTION RULES:
 - Numbered items (1., 2., a., b., Exercise 1:, Problem 1:, etc.) = EXERCISE
@@ -508,9 +513,10 @@ For each exercise, identify:
 
 IMPORTANT:
 - Return ONLY valid JSON. Do not include any explanatory text before or after the JSON.
-- CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
-- Use plain text for math: write "x^2" not LaTeX, write "x * y" not "x cdot y"
-- Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.
+- CRITICAL: Pay close attention to the LaTeX formatting. For all mathematical content, you MUST use LaTeX notation.
+- Enclose inline math expressions with \\( and \\).
+- Enclose block math expressions with \\[ and \\].
+- Ensure all backslashes in LaTeX are properly escaped for JSON output (e.g., \\\\(x^2\\\\) becomes \\\\\\\\(x^2\\\\\\\\) in the final JSON string).
 
 Return a JSON object with this exact structure:
 {
@@ -518,7 +524,7 @@ Return a JSON object with this exact structure:
         {
             "exerciseNumber": "1",
             "type": "mathematical",
-            "fullContent": "Solve for x: 2x + 5 = 15",
+            "fullContent": "Solve for x: \\(2x + 5 = 15\\)",
             "subject": "mathematics",
             "inputType": "text"
         }
@@ -539,7 +545,7 @@ Return ONLY valid JSON:
                 print("DEBUG TEXT ANALYSIS: AI Response:")
                 print(response.content)
 
-                let jsonString = extractJSON(from: response.content)
+                let jsonString = response.content
 
                 print("DEBUG TEXT ANALYSIS: Extracted JSON:")
                 print(jsonString)
@@ -612,6 +618,9 @@ Return ONLY valid JSON:
             return
         }
 
+        // Reset session to clear any accumulated context
+        session = LanguageModelSession()
+
         // Build a description of the content
         let exercisesDesc = analysisResult.exercises.map { "- Exercise \($0.exerciseNumber): \($0.type)" }.joined(separator: "\n")
 
@@ -646,7 +655,7 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
     ///
     /// - Parameters:
     ///   - exercise: The exercise to generate hints for
-    ///   - completion: Callback with array of 3 progressive hints
+    ///   - completion: Callback with array of 4 progressive hints
     func generateHints(
         for exercise: Exercise,
         completion: @escaping (Result<[Hint], Error>) -> Void
@@ -656,6 +665,9 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
             return
         }
 
+        // Reset session to clear any accumulated context
+        session = LanguageModelSession()
+
         let prompt = """
         You are an educational tutor providing progressive hints to help students solve exercises.
 
@@ -663,17 +675,54 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
         Type: \(exercise.type)
         Content: \(exercise.fullContent)
 
-        Generate exactly 3 progressive hints to help students solve this exercise. Each hint should reveal more information:
+        IMPORTANT: If this exercise has multiple sub-parts (like a, b, c or 1, 2, 3), address ALL parts in each hint level.
 
-        Level 1: Basic hint - Point the student in the right direction without giving away the method
-        Level 2: Method hint - Explain the approach or formula needed, but don't solve it
-        Level 3: Detailed hint - Guide through the steps, getting very close to the solution but NOT giving the final answer
+        Generate exactly 4 progressive hints to help students solve this exercise. Each hint should reveal more information:
 
-        IMPORTANT:
-        - Return ONLY valid JSON. Do not include any explanatory text before or after the JSON.
-        - CRITICAL: Do NOT use any LaTeX notation or backslashes. Write ALL math expressions in plain text only.
-        - Use plain text for math: write "x^2" not "x squared in LaTeX", write "x * y" or "x times y" not "x cdot y", write "(a+b)^2" not LaTeX notation.
-        - Never use backslash commands like \\(, \\), \\cdot, \\times, \\frac, etc.
+        Level 1: Basic hint - Point the student in the right direction for ALL parts without giving away the method
+        Level 2: Method hint - Explain the approach or formula needed for EACH part, but don't solve
+        Level 3: Detailed hint - Guide through the steps for EACH part, getting very close to the solution but NOT giving final answers
+        Level 4: Complete answer - Provide the full solution for ALL parts with clear explanations
+
+        MATHEMATICAL NOTATION RULES:
+        - Use inline LaTeX \\\\(expression\\\\) for mathematical expressions
+        - Examples: \\\\(x^2 + 5\\\\), \\\\(\\frac{a}{b}\\\\), \\\\(2\\pi r\\\\)
+        - Use block LaTeX \\\\[expression\\\\] for important standalone equations
+        - DO NOT nest LaTeX delimiters: WRONG: \\\\(x = \\\\(5\\\\)\\\\), CORRECT: \\\\(x = 5\\\\)
+        - DO NOT put plain text or names in math mode: WRONG: \\\\(Monday\\\\), CORRECT: Monday
+        - For lists, write normally: "Monday, Tuesday, Wednesday" not "\\\\(Monday, Tuesday, Wednesday\\\\)"
+
+        UNITS IN LATEX:
+        - For units with values, use \\\\text{} for the unit part
+        - WRONG: \\\\(8\\\\ g/cm^3\\\\) - backslash-space creates line break
+        - CORRECT: \\\\(8\\\\text{ g/cm}^3\\\\) - use \\\\text{} for units
+        - CORRECT: \\\\(8 \\\\, \\\\text{g/cm}^3\\\\) - use \\\\, for thin space
+        - Examples: \\\\(5\\\\text{ kg}\\\\), \\\\(20\\\\text{ m/s}\\\\), \\\\(8\\\\text{ g/cm}^3\\\\)
+        - Outside math mode, write units normally: "The density is 8 g/cm³" (use Unicode) or "8 g/cm^3"
+
+        LATEX CODE FOR VISUALIZATIONS:
+        - You MAY include LaTeX/TikZ code in level 4 for charts, diagrams, graphs
+        - CRITICAL TikZ RULES:
+          * Coordinates are 2D positions with LINEAR dimensions: (1,2) or (1cm,2cm)
+          * NEVER use volume/area units (cm^3, cm^2, m^3) in coordinates - these aren't positions!
+          * WRONG: (1cm, 8cm^3) - cm^3 is volume, not a coordinate
+          * CORRECT: (1cm, 2cm) - both are linear dimensions
+          * For volumes/areas, show them as LABELS using \\\\node, not coordinates
+          * Example: \\\\node at (1,1) {Volume: \\\\(8\\\\text{ cm}^3\\\\)};
+          * Keep TikZ code simple and syntactically valid
+        - Ensure ALL backslashes in LaTeX code are DOUBLE-escaped for JSON
+        - Example: "\\\\begin{tikzpicture} \\\\draw (0,0) rectangle (2cm,3cm); \\\\node at (1cm,1.5cm) {Label}; \\\\end{tikzpicture}"
+        - Separate explanation text from code
+        - If the problem involves volumes or 3D objects, either:
+          * Draw a 2D projection and label it with the volume
+          * Describe the visualization in words instead of attempting 3D TikZ
+          * Use simple 2D shapes with annotations
+
+        CRITICAL JSON FORMATTING:
+        - Return ONLY valid JSON. Do not wrap in markdown code blocks (no ```json or ```)
+        - ALL backslashes must be double-escaped: single \\\\ becomes \\\\\\\\
+        - Newlines in content are fine but must be actual line breaks, not \\\\n
+        - Test your JSON is valid before responding
 
         Return a JSON array with this exact structure:
         [
@@ -685,21 +734,34 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
             {
                 "level": 2,
                 "title": "Method to Use",
-                "content": "Explain the approach or formula needed"
+                "content": "Explain the approach with proper math notation like \\\\(formula\\\\)"
             },
             {
                 "level": 3,
                 "title": "Step-by-Step Guide",
-                "content": "Walk through the process without giving the final answer"
+                "content": "Walk through the solution process step by step"
+            },
+            {
+                "level": 4,
+                "title": "Complete Answer",
+                "content": "Full solution with LaTeX/TikZ if needed. Example: Draw a circle: \\\\begin{tikzpicture} \\\\draw (0,0) circle (1cm); \\\\end{tikzpicture}"
             }
         ]
 
+        MULTI-PART EXERCISE STRUCTURE:
+        If exercise has parts like "a) Find x, b) Calculate y, c) Prove z", structure hints as:
+        Level 1: "For part a: [hint]. For part b: [hint]. For part c: [hint]."
+        Level 2: "Part a: Use [method]. Part b: Apply [approach]. Part c: Consider [strategy]."
+        Level 3: "Part a: Step 1... Step 2... Part b: First... Then... Part c: Begin by..."
+        Level 4: "Part a: [complete solution]. Part b: [complete solution]. Part c: [complete solution]."
+
         Guidelines:
-        - Be encouraging and supportive in tone
-        - Each hint should be progressively more detailed
-        - Never give away the final answer directly
+        - Be encouraging and supportive
+        - Each hint progressively more detailed
         - Use clear, student-friendly language
-        - Tailor the complexity to the exercise type
+        - Proper LaTeX syntax with correct escaping
+        - Avoid nested delimiters and plain text in math mode
+        - For multi-part exercises, address every sub-part in every hint level
         """
 
         Task {
@@ -710,9 +772,45 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
                 let response = try await session.respond(to: prompt)
                 print("DEBUG HINTS: AI Response:\n\(response.content)")
 
-                let jsonString = extractJSON(from: response.content)
+                var jsonString = response.content
                 print("DEBUG HINTS: Extracted JSON:\n\(jsonString)")
 
+                // Remove markdown code block wrapper if present
+                jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+                if jsonString.hasPrefix("```json") {
+                    jsonString = String(jsonString.dropFirst(7)) // Remove ```json
+                }
+                if jsonString.hasPrefix("```") {
+                    jsonString = String(jsonString.dropFirst(3)) // Remove ```
+                }
+                if jsonString.hasSuffix("```") {
+                    jsonString = String(jsonString.dropLast(3)) // Remove trailing ```
+                }
+                jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Sanitize LaTeX in JSON - fix improperly escaped backslashes
+                jsonString = sanitizeLaTeXInJSON(jsonString)
+                print("DEBUG HINTS: Sanitized JSON:\n\(jsonString)")
+                print("DEBUG HINTS: Sanitized JSON length: \(jsonString.count)")
+                print("DEBUG HINTS: First 100 chars: \(String(jsonString.prefix(100)))")
+                print("DEBUG HINTS: Last 100 chars: \(String(jsonString.suffix(100)))")
+
+                // Test if the JSON is valid before attempting to parse
+                if let testData = jsonString.data(using: .utf8) {
+                    print("DEBUG HINTS: Data size: \(testData.count) bytes")
+                    do {
+                        let _ = try JSONSerialization.jsonObject(with: testData, options: [])
+                        print("DEBUG HINTS: ✅ JSON is valid")
+                    } catch {
+                        print("DEBUG HINTS: ❌ JSON validation failed: \(error)")
+                        // Try to identify the problematic area
+                        if let errorDescription = error.localizedDescription.lowercased() as String? {
+                            print("DEBUG HINTS: Error description: \(errorDescription)")
+                        }
+                    }
+                } else {
+                    print("DEBUG HINTS: ❌ Failed to convert sanitized JSON to UTF-8 data")
+                }
 
                 guard let data = jsonString.data(using: .utf8) else {
                     print("DEBUG HINTS: Failed to convert JSON string to data.")
@@ -723,11 +821,49 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
                 }
 
                 let decoder = JSONDecoder()
-                let hints = try decoder.decode([Hint].self, from: data)
-                print("DEBUG HINTS: Successfully parsed \(hints.count) hints.")
+                do {
+                    let hints = try decoder.decode([Hint].self, from: data)
+                    print("DEBUG HINTS: Successfully parsed \(hints.count) hints.")
 
-                await MainActor.run {
-                    completion(.success(hints))
+                    await MainActor.run {
+                        completion(.success(hints))
+                    }
+                } catch let decodingError as DecodingError {
+                    print("DEBUG HINTS: Decoding error details:")
+                    switch decodingError {
+                    case .dataCorrupted(let context):
+                        print("  - Data corrupted: \(context.debugDescription)")
+                        print("  - Coding path: \(context.codingPath)")
+                    case .keyNotFound(let key, let context):
+                        print("  - Key not found: \(key.stringValue)")
+                        print("  - Context: \(context.debugDescription)")
+                        print("  - Coding path: \(context.codingPath)")
+                    case .typeMismatch(let type, let context):
+                        print("  - Type mismatch: expected \(type)")
+                        print("  - Context: \(context.debugDescription)")
+                        print("  - Coding path: \(context.codingPath)")
+                    case .valueNotFound(let type, let context):
+                        print("  - Value not found: \(type)")
+                        print("  - Context: \(context.debugDescription)")
+                        print("  - Coding path: \(context.codingPath)")
+                    @unknown default:
+                        print("  - Unknown decoding error: \(decodingError)")
+                    }
+
+                    // Try to parse as raw JSON to see structure
+                    if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []) {
+                        print("DEBUG HINTS: Raw JSON structure:")
+                        print(jsonObject)
+                    }
+
+                    await MainActor.run {
+                        completion(.failure(AIAnalysisError.parsingFailed(decodingError)))
+                    }
+                } catch {
+                    print("DEBUG HINTS: Non-decoding error: \(error.localizedDescription)")
+                    await MainActor.run {
+                        completion(.failure(AIAnalysisError.parsingFailed(error)))
+                    }
                 }
             } catch {
                 print("DEBUG HINTS: Error generating hints: \(error.localizedDescription)")
@@ -738,72 +874,99 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
         }
     }
 
-    /// Extracts JSON from a response that might contain additional text
-    private func extractJSON(from text: String) -> String {
-        var jsonString = text
+    /// Sanitizes LaTeX notation in JSON strings by properly escaping backslashes and newlines
+    /// This fixes common issues where AI models don't properly escape LaTeX in JSON
+    private func sanitizeLaTeXInJSON(_ json: String) -> String {
+        // Simpler approach: build result string piece by piece
+        var result = ""
+        var currentIndex = json.startIndex
 
-        // Remove markdown code blocks if present (```json ... ``` or ``` ... ```)
-        var cleanedText = text
-        if let codeBlockStart = text.range(of: "```json\n"),
-           let codeBlockEnd = text.range(of: "\n```", range: codeBlockStart.upperBound..<text.endIndex) {
-            cleanedText = String(text[codeBlockStart.upperBound..<codeBlockEnd.lowerBound])
-        } else if let codeBlockStart = text.range(of: "```\n"),
-                  let codeBlockEnd = text.range(of: "\n```", range: codeBlockStart.upperBound..<text.endIndex) {
-            cleanedText = String(text[codeBlockStart.upperBound..<codeBlockEnd.lowerBound])
+        // Pattern to match "content": "..." with proper handling of escaped quotes
+        let pattern = #"("content"\s*:\s*")([^"]*(?:\\.[^"]*)*)"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
+            print("DEBUG HINTS: Failed to create regex for sanitization")
+            return json
         }
 
-        // Trim whitespace and check what the JSON starts with
-        let trimmed = cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nsRange = NSRange(json.startIndex..., in: json)
+        let matches = regex.matches(in: json, options: [], range: nsRange)
 
-        // Check if it starts with [ (array) or { (object) to determine what to extract
-        if trimmed.hasPrefix("[") {
-            // Extract array
-            if let startIndex = cleanedText.firstIndex(of: "["),
-               let endIndex = cleanedText.lastIndex(of: "]") {
-                let jsonRange = startIndex...endIndex
-                jsonString = String(cleanedText[jsonRange])
+        for match in matches {
+            guard match.numberOfRanges == 3,
+                  let prefixRange = Range(match.range(at: 1), in: json),
+                  let contentRange = Range(match.range(at: 2), in: json) else {
+                continue
             }
-        } else if trimmed.hasPrefix("{") {
-            // Extract object
-            if let startIndex = cleanedText.firstIndex(of: "{"),
-               let endIndex = cleanedText.lastIndex(of: "}") {
-                let jsonRange = startIndex...endIndex
-                jsonString = String(cleanedText[jsonRange])
-            }
-        } else {
-            // Fallback: try to find any JSON structure in cleaned text
-            // Try object first
-            if let startIndex = cleanedText.firstIndex(of: "{"),
-               let endIndex = cleanedText.lastIndex(of: "}") {
-                let jsonRange = startIndex...endIndex
-                jsonString = String(cleanedText[jsonRange])
-            }
-            // Try array
-            else if let startIndex = cleanedText.firstIndex(of: "["),
-                    let endIndex = cleanedText.lastIndex(of: "]") {
-                let jsonRange = startIndex...endIndex
-                jsonString = String(cleanedText[jsonRange])
-            }
+
+            // Append everything before this match
+            result += json[currentIndex..<prefixRange.lowerBound]
+
+            // Append the prefix ("content": ")
+            result += json[prefixRange]
+
+            // Process the content
+            let content = String(json[contentRange])
+            let sanitized = sanitizeJSONContent(content)
+            result += sanitized
+
+            // Update current index to after the content (the closing quote is not in the match)
+            currentIndex = contentRange.upperBound
         }
 
-        // Fix LaTeX math notation and other backslash issues in JSON
-        // Replace single backslashes with double backslashes for proper JSON escaping
-        jsonString = jsonString.replacingOccurrences(of: "\\(", with: "\\\\(")
-        jsonString = jsonString.replacingOccurrences(of: "\\)", with: "\\\\)")
-        jsonString = jsonString.replacingOccurrences(of: "\\[", with: "\\\\[")
-        jsonString = jsonString.replacingOccurrences(of: "\\]", with: "\\\\]")
-        jsonString = jsonString.replacingOccurrences(of: "\\times", with: "\\\\times")
-        jsonString = jsonString.replacingOccurrences(of: "\\cdot", with: "\\\\cdot")
-        jsonString = jsonString.replacingOccurrences(of: "\\frac", with: "\\\\frac")
-        jsonString = jsonString.replacingOccurrences(of: "\\sqrt", with: "\\\\sqrt")
-        jsonString = jsonString.replacingOccurrences(of: "\\div", with: "\\\\div")
-        jsonString = jsonString.replacingOccurrences(of: "\\pm", with: "\\\\pm")
-        jsonString = jsonString.replacingOccurrences(of: "\\leq", with: "\\\\leq")
-        jsonString = jsonString.replacingOccurrences(of: "\\geq", with: "\\\\geq")
-        jsonString = jsonString.replacingOccurrences(of: "\\neq", with: "\\\\neq")
-        jsonString = jsonString.replacingOccurrences(of: "\\approx", with: "\\\\approx")
+        // Append remaining string
+        result += json[currentIndex...]
 
-        return jsonString
+        return result
+    }
+
+    /// Sanitizes a single content value for JSON
+    private func sanitizeJSONContent(_ content: String) -> String {
+        var result = content
+
+        // Step 1: Escape literal newlines and carriage returns
+        result = result
+            .replacingOccurrences(of: "\r\n", with: "\\n")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\n")
+
+        // Step 2: Fix backslashes
+        // Protect already-escaped sequences
+        let protected = result
+            .replacingOccurrences(of: "\\\\", with: "\u{0001}DBLSLASH\u{0001}")
+            .replacingOccurrences(of: "\\n", with: "\u{0001}NEWLINE\u{0001}")
+            .replacingOccurrences(of: "\\t", with: "\u{0001}TAB\u{0001}")
+            .replacingOccurrences(of: "\\r", with: "\u{0001}RETURN\u{0001}")
+            .replacingOccurrences(of: "\\\"", with: "\u{0001}QUOTE\u{0001}")
+            .replacingOccurrences(of: "\\'", with: "\u{0001}APOS\u{0001}")
+
+        // Replace remaining single backslashes with double
+        let fixed = protected.replacingOccurrences(of: "\\", with: "\\\\")
+
+        // Restore protected sequences
+        var restored = fixed
+            .replacingOccurrences(of: "\u{0001}DBLSLASH\u{0001}", with: "\\\\")
+            .replacingOccurrences(of: "\u{0001}NEWLINE\u{0001}", with: "\\n")
+            .replacingOccurrences(of: "\u{0001}TAB\u{0001}", with: "\\t")
+            .replacingOccurrences(of: "\u{0001}RETURN\u{0001}", with: "\\r")
+            .replacingOccurrences(of: "\u{0001}QUOTE\u{0001}", with: "\\\"")
+            .replacingOccurrences(of: "\u{0001}APOS\u{0001}", with: "\\'")
+
+        // Step 3: Fix trailing backslashes that would escape the closing quote
+        var trailingBackslashes = 0
+        for char in restored.reversed() {
+            if char == "\\" {
+                trailingBackslashes += 1
+            } else {
+                break
+            }
+        }
+        // If odd number of trailing backslashes, add one more
+        if trailingBackslashes % 2 == 1 {
+            restored += "\\"
+        }
+
+        return restored
     }
 
     /// Performs AI analysis using Apple Intelligence Foundation Models

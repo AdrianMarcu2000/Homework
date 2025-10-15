@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import LaTeXSwiftUI
 import PencilKit
 import CoreData
 
@@ -113,11 +114,19 @@ struct ExerciseCardContent: View {
                     )
             }
 
-            Text(exercise.fullContent)
-                .font(.body)
-                .textSelection(.enabled)
-                .foregroundColor(.primary)
-                .onAppear {
+                                                                    LaTeX(exercise.fullContent)
+
+                                                                        .font(.body)
+
+                                                                        .textSelection(.enabled)
+
+                                                                        .foregroundColor(.primary)
+
+                                                                        .onAppear {
+
+                                                                            print("DEBUG LATEX: \(exercise.fullContent)")
+
+                                                                        }                .onAppear {
                     print("🖥️ UI RENDER: Displaying exercise #\(exercise.exerciseNumber)")
                     print("   Content: \(exercise.fullContent.prefix(150))...")
                     if exercise.fullContent.count > 150 {
@@ -533,7 +542,7 @@ private struct HintCard: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(hint.content)
+                LaTeX(hint.content)
                     .font(.body)
                     .textSelection(.enabled)
                     .foregroundColor(.primary)

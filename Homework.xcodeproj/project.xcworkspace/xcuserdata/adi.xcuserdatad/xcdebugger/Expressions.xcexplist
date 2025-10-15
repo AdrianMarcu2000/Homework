@@ -3,6 +3,14 @@
    version = "1.0">
    <ContextStates>
       <ContextState
+         contextName = "closure #1 in AIAnalysisService.generateSimilarExercises(basedOn:count:completion:):AIAnalysisService.swift">
+         <PersistentStrings>
+            <PersistentString
+               value = "print(prompt)">
+            </PersistentString>
+         </PersistentStrings>
+      </ContextState>
+      <ContextState
          contextName = "closure #1 in ExerciseCard.body.getter:LessonsAndExercisesView.swift">
          <PersistentStrings>
             <PersistentString

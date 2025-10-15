@@ -11,6 +11,7 @@
 		4037A3A52E9958D700EE6957 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4037A3A42E9958D700EE6957 /* FirebaseCore */; };
 		4037A3B82E996BB200EE6957 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 4037A3B72E996BB200EE6957 /* GoogleSignIn */; };
 		4037A3BA2E996BB200EE6957 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4037A3B92E996BB200EE6957 /* GoogleSignInSwift */; };
+		40B09C232E9F85F500743D2F /* LaTeXSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 40B09C222E9F85F500743D2F /* LaTeXSwiftUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40B09C232E9F85F500743D2F /* LaTeXSwiftUI in Frameworks */,
 				4037A3A52E9958D700EE6957 /* FirebaseCore in Frameworks */,
 				4037A3A32E9958D700EE6957 /* FirebaseAppCheck in Frameworks */,
 				4037A3B82E996BB200EE6957 /* GoogleSignIn in Frameworks */,
@@ -93,6 +95,7 @@
 				4037A3A42E9958D700EE6957 /* FirebaseCore */,
 				4037A3B72E996BB200EE6957 /* GoogleSignIn */,
 				4037A3B92E996BB200EE6957 /* GoogleSignInSwift */,
+				40B09C222E9F85F500743D2F /* LaTeXSwiftUI */,
 			);
 			productName = Homework;
 			productReference = 404E14FE2E96E1AC00E01643 /* Homework.app */;
@@ -125,6 +128,7 @@
 			packageReferences = (
 				4037A3A12E9958D700EE6957 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				4037A3B62E996BB200EE6957 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				40B09C212E9F85F500743D2F /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 404E14FF2E96E1AC00E01643 /* Products */;
@@ -394,6 +398,14 @@
 				minimumVersion = 9.0.0;
 			};
 		};
+		40B09C212E9F85F500743D2F /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/colinc86/LaTeXSwiftUI.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -416,6 +428,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4037A3B62E996BB200EE6957 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		40B09C222E9F85F500743D2F /* LaTeXSwiftUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 40B09C212E9F85F500743D2F /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */;
+			productName = LaTeXSwiftUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

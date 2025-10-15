@@ -53,6 +53,27 @@ extension Item: AnalyzableHomework {
         timestamp
     }
 
+    /// Primary subject of the homework based on exercises
+    public var subject: String {
+        guard let analysis = analysisResult else {
+            return "Other"
+        }
+
+        // Count exercises by subject
+        var subjectCounts: [String: Int] = [:]
+        for exercise in analysis.exercises {
+            let subject = exercise.subject?.capitalized ?? "Other"
+            subjectCounts[subject, default: 0] += 1
+        }
+
+        // Return the most common subject
+        if let mostCommon = subjectCounts.max(by: { $0.value < $1.value }) {
+            return mostCommon.key
+        }
+
+        return "Other"
+    }
+
     // AnalyzableHomework requires exerciseAnswers as [String: Data]?
     // Core Data has exerciseAnswersData as Data
     public var exerciseAnswers: [String: Data]? {

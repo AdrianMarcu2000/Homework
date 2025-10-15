@@ -15,9 +15,9 @@ import CoreData
 struct HomeworkListView: View {
     // MARK: - Properties
 
-    /// Fetched results containing all homework items sorted by timestamp
+    /// Fetched results containing all homework items sorted by timestamp (newest first)
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
+        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: false)],
         animation: .default)
     private var items: FetchedResults<Item>
 
@@ -39,15 +39,64 @@ struct HomeworkListView: View {
     /// Show settings sheet
     @State private var showSettings = false
 
+    /// Track which sections are expanded
+    @State private var expandedSections: Set<String> = []
+
     // MARK: - Body
+
+    /// Grouped items by subject
+    private var groupedItems: [String: [Item]] {
+        Dictionary(grouping: Array(items), by: { $0.subject })
+    }
+
+    /// Sorted subject names by newest homework in each group
+    private var sortedSubjects: [String] {
+        groupedItems.keys.sorted { subject1, subject2 in
+            // "Other" always goes last
+            if subject1 == "Other" { return false }
+            if subject2 == "Other" { return true }
+
+            // Get newest homework in each subject
+            let newest1 = groupedItems[subject1]?.first?.timestamp ?? Date.distantPast
+            let newest2 = groupedItems[subject2]?.first?.timestamp ?? Date.distantPast
+
+            // Sort by newest first
+            return newest1 > newest2
+        }
+    }
 
     var body: some View {
         List(selection: $selectedItem) {
-            ForEach(items) { item in
-                HomeworkRowView(item: item)
-                    .tag(item)
+            ForEach(sortedSubjects, id: \.self) { subject in
+                DisclosureGroup(
+                    isExpanded: Binding(
+                        get: { expandedSections.contains(subject) },
+                        set: { isExpanded in
+                            if isExpanded {
+                                expandedSections.insert(subject)
+                            } else {
+                                expandedSections.remove(subject)
+                            }
+                        }
+                    )
+                ) {
+                    ForEach(groupedItems[subject] ?? []) { item in
+                        HomeworkRowView(item: item)
+                            .tag(item)
+                    }
+                    .onDelete { offsets in
+                        deleteItemsInSection(subject: subject, offsets: offsets)
+                    }
+                } label: {
+                    SubjectHeader(subject: subject, count: groupedItems[subject]?.count ?? 0)
+                }
             }
-            .onDelete(perform: deleteItems)
+        }
+        .onAppear {
+            // Expand the first section (newest) by default
+            if let firstSubject = sortedSubjects.first {
+                expandedSections.insert(firstSubject)
+            }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -81,12 +130,15 @@ struct HomeworkListView: View {
 
     // MARK: - Private Methods
 
-    /// Deletes homework items at the specified offsets from Core Data.
+    /// Deletes homework items from a specific subject section
     ///
-    /// - Parameter offsets: The index set of items to delete from the list
-    private func deleteItems(offsets: IndexSet) {
+    /// - Parameters:
+    ///   - subject: The subject section
+    ///   - offsets: The index set of items to delete within that section
+    private func deleteItemsInSection(subject: String, offsets: IndexSet) {
         withAnimation {
-            let itemsToDelete = offsets.map { items[$0] }
+            guard let sectionItems = groupedItems[subject] else { return }
+            let itemsToDelete = offsets.map { sectionItems[$0] }
 
             // Check if currently selected item is being deleted
             if let selected = selectedItem, itemsToDelete.contains(selected) {
@@ -102,6 +154,55 @@ struct HomeworkListView: View {
                 fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
             }
         }
+    }
+}
+
+/// Custom section header for subject groups
+private struct SubjectHeader: View {
+    let subject: String
+    let count: Int
+
+    /// Icon for each subject
+    private var subjectIcon: String {
+        switch subject.lowercased() {
+        case "mathematics", "math":
+            return "function"
+        case "science":
+            return "atom"
+        case "history":
+            return "clock"
+        case "english", "language":
+            return "book"
+        case "geography":
+            return "globe"
+        case "physics":
+            return "waveform.path"
+        case "chemistry":
+            return "flask"
+        case "biology":
+            return "leaf"
+        default:
+            return "folder"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: subjectIcon)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            Text(subject)
+                .font(.headline)
+                .fontWeight(.semibold)
+
+            Text("(\(count))")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
     }
 }
 

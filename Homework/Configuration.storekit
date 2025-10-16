@@ -1,0 +1,91 @@
+{
+  "identifier" : "E7C8B5A1",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21482993",
+      "localizations" : [
+
+      ],
+      "name" : "Cloud AI",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6670918049",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock multimodal AI analysis with Google Gemini for better homework understanding and exercise detection",
+              "displayName" : "Cloud AI Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.BlueFern.Homework.cloudai.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Cloud AI Monthly",
+          "subscriptionGroupID" : "21482993",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

@@ -10,8 +10,10 @@ import SwiftUI
 /// Settings view for app preferences and security
 struct SettingsView: View {
     @EnvironmentObject var authService: BiometricAuthService
+    @StateObject private var subscriptionService = SubscriptionService.shared
     @AppStorage("requireAuthentication") private var requireAuthentication = true
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+    @State private var showingSubscription = false
 
     var body: some View {
         NavigationView {
@@ -79,8 +81,55 @@ struct SettingsView: View {
                             .labelsHidden()
                     }
 
-                    Toggle("Use cloud analysis", isOn: $useCloudAnalysis)
-                        .disabled(!AIAnalysisService.shared.isModelAvailable && useCloudAnalysis == false)
+                    // Cloud AI Subscription Status
+                    if case .subscribed(let expirationDate) = subscriptionService.subscriptionStatus {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Cloud AI Active")
+                                        .font(.body)
+                                    if let date = expirationDate {
+                                        Text("Renews \(date.formatted(date: .abbreviated, time: .omitted))")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Button("Manage") {
+                                    showingSubscription = true
+                                }
+                                .font(.subheadline)
+                            }
+                        }
+
+                        Toggle("Use cloud analysis", isOn: $useCloudAnalysis)
+                    } else {
+                        Button(action: {
+                            showingSubscription = true
+                        }) {
+                            HStack {
+                                Image(systemName: "cloud.fill")
+                                    .foregroundColor(.blue)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Subscribe to Cloud AI")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    Text("$4.99/month")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                        }
+
+                        Toggle("Use cloud analysis", isOn: $useCloudAnalysis)
+                            .disabled(true)
+                    }
 
                     HStack {
                         Image(systemName: useCloudAnalysis ? "cloud.fill" : AIAnalysisService.shared.isModelAvailable ? "iphone" : "doc.text.viewfinder")
@@ -110,14 +159,16 @@ struct SettingsView: View {
                 } header: {
                     Text("Homework Analysis")
                 } footer: {
-                    if AIAnalysisService.shared.isModelAvailable && useCloudAnalysis {
-                        Text("Cloud AI provides multimodal analysis with much better clarity and exercise detection compared to Apple Intelligence, which currently supports text-only processing.\n\nNote: Cloud analysis will require a subscription in future updates.")
+                    if !subscriptionService.subscriptionStatus.isActive {
+                        Text("Cloud AI requires an active subscription. Subscribe to enable multimodal analysis with Google's Gemini AI for better clarity and exercise detection.")
+                    } else if AIAnalysisService.shared.isModelAvailable && useCloudAnalysis {
+                        Text("Cloud AI provides multimodal analysis with much better clarity and exercise detection compared to Apple Intelligence, which currently supports text-only processing.")
                     } else if AIAnalysisService.shared.isModelAvailable && !useCloudAnalysis {
-                        Text("Apple Intelligence provides privacy-focused on-device analysis but is currently text-only (not multimodal). For better clarity and exercise detection, consider upgrading to Cloud AI.\n\nNote: Cloud analysis will require a subscription in future updates.")
+                        Text("Apple Intelligence provides privacy-focused on-device analysis but is currently text-only (not multimodal). For better clarity and exercise detection, consider enabling Cloud AI.")
                     } else if !AIAnalysisService.shared.isModelAvailable && useCloudAnalysis {
-                        Text("Cloud AI uses Google's Gemini AI for multimodal exercise detection and intelligent splitting.\n\nNote: Cloud analysis will require a subscription in future updates.")
+                        Text("Cloud AI uses Google's Gemini AI for multimodal exercise detection and intelligent splitting.")
                     } else {
-                        Text("Apple Intelligence is not available on this device. Without cloud analysis, homework is processed with basic OCR text extraction only. All text appears as a single exercise with no AI-powered splitting.\n\nUpgrade to Cloud AI for intelligent exercise detection.\n\nNote: Cloud analysis will require a subscription in future updates.")
+                        Text("Apple Intelligence is not available on this device. Without cloud analysis, homework is processed with basic OCR text extraction only. All text appears as a single exercise with no AI-powered splitting.\n\nUpgrade to Cloud AI for intelligent exercise detection.")
                     }
                 }
 
@@ -134,6 +185,11 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .sheet(isPresented: $showingSubscription) {
+                SubscriptionView()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
         }
     }
 

@@ -16,6 +16,14 @@ public enum AnalysisStatus: String {
     case failed
 }
 
+/// The method used to analyze the homework
+public enum AnalysisMethod: String {
+    case none = "none"              // No analysis performed
+    case ocrOnly = "ocr_only"       // Basic OCR without AI
+    case appleAI = "apple_ai"       // Apple Intelligence (on-device)
+    case cloudAI = "cloud_ai"       // Google Gemini (cloud)
+}
+
 /// Extension to make Item conform to AnalyzableHomework protocol
 extension Item: AnalyzableHomework {
 
@@ -30,6 +38,14 @@ extension Item: AnalyzableHomework {
         } else {
             return .notStarted
         }
+    }
+
+    /// The method used to analyze this homework
+    public var usedAnalysisMethod: AnalysisMethod {
+        guard let method = analysisMethod else {
+            return .none
+        }
+        return AnalysisMethod(rawValue: method) ?? .none
     }
     public var id: String {
         self.objectID.uriRepresentation().absoluteString

@@ -142,6 +142,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                 if !shouldUseAI {
                     await MainActor.run {
                         newItem.extractedText = ocrResult.fullText
+                        newItem.analysisMethod = AnalysisMethod.ocrOnly.rawValue
 
                         // Create a single exercise containing all OCR text
                         let singleExercise = AIAnalysisService.Exercise(
@@ -192,6 +193,8 @@ class HomeworkCaptureViewModel: ObservableObject {
                             let encoder = JSONEncoder()
                             let jsonData = try encoder.encode(analysis)
                             newItem.analysisJSON = String(data: jsonData, encoding: .utf8)
+                            // Set the analysis method based on which service was used
+                            newItem.analysisMethod = useCloud ? AnalysisMethod.cloudAI.rawValue : AnalysisMethod.appleAI.rawValue
                         } catch {
                             newItem.analysisJSON = "failed"
                         }
@@ -342,6 +345,8 @@ class HomeworkCaptureViewModel: ObservableObject {
                     if let jsonString = String(data: jsonData, encoding: .utf8) {
                         // Explicitly overwrite analysisJSON field
                         item.analysisJSON = jsonString
+                        // Set analysis method based on whether cloud was used
+                        item.analysisMethod = isCloudAnalysisInProgress ? AnalysisMethod.cloudAI.rawValue : AnalysisMethod.appleAI.rawValue
                         print("DEBUG SAVE: ✅ Analysis JSON saved successfully (overwrites any previous analysis)")
                     }
                 } catch {
@@ -418,6 +423,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                     DispatchQueue.main.async {
                         self.isProcessingOCR = false
                         item.extractedText = ocrResult.fullText
+                        item.analysisMethod = AnalysisMethod.ocrOnly.rawValue
 
                         // Create a single exercise containing all OCR text
                         let singleExercise = AIAnalysisService.Exercise(
@@ -496,6 +502,20 @@ class HomeworkCaptureViewModel: ObservableObject {
                     print("DEBUG REANALYZE: Received analysis - Exercises: \(analysis.exercises.count)")
                     self.analysisResult = analysis
 
+                    // Save analysis immediately
+                    do {
+                        let encoder = JSONEncoder()
+                        encoder.outputFormatting = .prettyPrinted
+                        let jsonData = try encoder.encode(analysis)
+                        if let jsonString = String(data: jsonData, encoding: .utf8) {
+                            item.analysisJSON = jsonString
+                            item.analysisMethod = AnalysisMethod.appleAI.rawValue
+                            print("DEBUG REANALYZE: ✅ Analysis JSON saved to item")
+                        }
+                    } catch {
+                        print("❌ Error encoding reanalysis result: \(error)")
+                    }
+
                     // Generate a summary of the homework
                     AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
                         DispatchQueue.main.async {
@@ -503,15 +523,26 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                             switch summaryResult {
                             case .success(let summary):
-                                self.extractedText = summary
+                                item.extractedText = summary
                                 print("DEBUG REANALYZE: Generated summary: \(summary)")
-                                self.saveHomework(context: context)
 
                             case .failure(let error):
                                 print("DEBUG REANALYZE: Summary generation failed - \(error.localizedDescription)")
                                 // Fallback to a basic summary
-                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
+                                item.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
                             }
+
+                            // Save to Core Data and force refresh
+                            do {
+                                try context.save()
+                                // Force Core Data to refresh the object
+                                context.refresh(item, mergeChanges: true)
+                                print("DEBUG REANALYZE: ✅ Core Data saved and refreshed")
+                            } catch {
+                                print("❌ Error saving reanalysis: \(error)")
+                            }
+
+                            self.reanalyzingItem = nil
                         }
                     }
 
@@ -550,6 +581,20 @@ class HomeworkCaptureViewModel: ObservableObject {
                     print("DEBUG REANALYZE CLOUD: Cloud analysis successful - Exercises: \(analysis.exercises.count)")
                     self.analysisResult = analysis
 
+                    // Save analysis immediately
+                    do {
+                        let encoder = JSONEncoder()
+                        encoder.outputFormatting = .prettyPrinted
+                        let jsonData = try encoder.encode(analysis)
+                        if let jsonString = String(data: jsonData, encoding: .utf8) {
+                            item.analysisJSON = jsonString
+                            item.analysisMethod = AnalysisMethod.cloudAI.rawValue
+                            print("DEBUG REANALYZE CLOUD: ✅ Analysis JSON saved to item")
+                        }
+                    } catch {
+                        print("❌ Error encoding reanalysis result: \(error)")
+                    }
+
                     // Generate a summary for cloud analysis results
                     AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
                         DispatchQueue.main.async {
@@ -557,15 +602,26 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                             switch summaryResult {
                             case .success(let summary):
-                                self.extractedText = summary
+                                item.extractedText = summary
                                 print("DEBUG REANALYZE CLOUD: Generated summary: \(summary)")
-                                self.saveHomework(context: context)
 
                             case .failure(let error):
                                 print("DEBUG REANALYZE CLOUD: Summary generation failed - \(error.localizedDescription)")
                                 // Fallback to a basic summary
-                                self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
+                                item.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
                             }
+
+                            // Save to Core Data and force refresh
+                            do {
+                                try context.save()
+                                // Force Core Data to refresh the object
+                                context.refresh(item, mergeChanges: true)
+                                print("DEBUG REANALYZE CLOUD: ✅ Core Data saved and refreshed")
+                            } catch {
+                                print("❌ Error saving reanalysis: \(error)")
+                            }
+
+                            self.reanalyzingItem = nil
                         }
                     }
 

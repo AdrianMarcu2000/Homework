@@ -91,7 +91,22 @@ class CloudAnalysisService {
             return "https://us-central1-homework-66038.cloudfunctions.net"
             #endif
         }
+
+        // Timeout configurations
+        static let requestTimeout: TimeInterval = 120 // 2 minutes for request
+        static let resourceTimeout: TimeInterval = 180 // 3 minutes total
+        static let maxRetries = 2
+        static let retryDelay: TimeInterval = 2
     }
+
+    /// Custom URLSession with extended timeouts for cloud functions
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = Config.requestTimeout
+        config.timeoutIntervalForResource = Config.resourceTimeout
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
 
 
     /// Analyzes homework using cloud LLM
@@ -165,7 +180,8 @@ class CloudAnalysisService {
         image: UIImage,
         ocrBlocks: [AIAnalysisService.OCRBlock],
         appCheckToken: String,
-        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
+        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void,
+        retryCount: Int = 0
     ) {
         // Step 1: Convert image to base64
         // Compress more aggressively for faster upload/processing
@@ -201,11 +217,41 @@ class CloudAnalysisService {
 
         print("DEBUG CLOUD: Sending request to \(url.absoluteString)")
         print("DEBUG CLOUD: OCR text length: \(ocrJsonText.count) characters")
+        print("DEBUG CLOUD: Request size: \(request.httpBody?.count ?? 0) bytes")
+        print("DEBUG CLOUD: Timeout: request=\(Config.requestTimeout)s, resource=\(Config.resourceTimeout)s")
+        if retryCount > 0 {
+            print("DEBUG CLOUD: Retry attempt \(retryCount) of \(Config.maxRetries)")
+        }
 
-        // Step 5: Execute request
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+        // Step 5: Execute request with custom session
+        let task = urlSession.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
             if let error = error {
+                let nsError = error as NSError
                 print("DEBUG CLOUD: Network error - \(error.localizedDescription)")
+                print("DEBUG CLOUD: Error domain: \(nsError.domain), code: \(nsError.code)")
+
+                // Check if it's a timeout or connection error that can be retried
+                let isRetryableError = nsError.domain == NSURLErrorDomain &&
+                    (nsError.code == NSURLErrorTimedOut ||
+                     nsError.code == NSURLErrorNetworkConnectionLost ||
+                     nsError.code == NSURLErrorCannotConnectToHost)
+
+                if isRetryableError && retryCount < Config.maxRetries {
+                    print("⚠️ Retryable error detected, scheduling retry \(retryCount + 1) of \(Config.maxRetries)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performAnalysisRequest(
+                            image: image,
+                            ocrBlocks: ocrBlocks,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
                 completion(.failure(CloudAnalysisError.networkError(error)))
                 return
             }
@@ -220,6 +266,22 @@ class CloudAnalysisService {
             guard httpResponse.statusCode == 200 else {
                 let errorMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
                 print("DEBUG CLOUD: Error response: \(errorMessage)")
+
+                // Retry on 500-level errors (server issues)
+                if httpResponse.statusCode >= 500 && retryCount < Config.maxRetries {
+                    print("⚠️ Server error (5xx), scheduling retry \(retryCount + 1) of \(Config.maxRetries)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performAnalysisRequest(
+                            image: image,
+                            ocrBlocks: ocrBlocks,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
                 completion(.failure(CloudAnalysisError.serverError(httpResponse.statusCode, errorMessage)))
                 return
             }
@@ -364,10 +426,17 @@ class CloudAnalysisService {
             case .encodingFailed(let error):
                 return "Failed to encode request: \(error.localizedDescription)"
             case .networkError(let error):
+                let nsError = error as NSError
+                if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut {
+                    return "Request timed out. The server took too long to respond. Please try again."
+                }
                 return "Network error: \(error.localizedDescription)"
             case .invalidResponse:
                 return "Invalid response from server"
             case .serverError(let code, let message):
+                if code >= 500 {
+                    return "Server is temporarily unavailable (\(code)). Please try again in a moment."
+                }
                 return "Server error (\(code)): \(message)"
             case .noData:
                 return "No data received from server"

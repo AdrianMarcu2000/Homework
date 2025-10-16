@@ -182,7 +182,46 @@ private struct HomeworkExercisesDetailView: View {
     var viewModel: HomeworkCaptureViewModel
     @Environment(\.managedObjectContext) private var viewContext
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+    @AppStorage("hasCloudSubscription") private var hasCloudSubscription = false
     @State private var isReanalyzing = false
+    @State private var showingSettings = false
+
+    /// Determines which AI upgrade button to show based on analysis history and AI availability
+    private func getUpgradeOption() -> (show: Bool, method: AnalysisMethod, label: String, icon: String, color: Color, opensSettings: Bool)? {
+        let currentMethod = item.usedAnalysisMethod
+        let appleAvailable = AIAnalysisService.shared.isModelAvailable
+        let cloudEnabled = useCloudAnalysis
+
+        // If already using cloud AI, no upgrade available
+        if currentMethod == .cloudAI {
+            return nil
+        }
+
+        // Case 1: User has subscription and cloud is enabled - show "Analyze with AI"
+        if hasCloudSubscription && cloudEnabled {
+            // Only show if not already analyzed with cloud
+            if currentMethod != .cloudAI {
+                return (true, .cloudAI, "Analyze with AI", "cloud.fill", .orange, false)
+            }
+        }
+
+        // Case 2: User has subscription but cloud is disabled - show "Enable AI" (opens settings)
+        if hasCloudSubscription && !cloudEnabled {
+            return (true, .cloudAI, "Enable AI", "cloud.fill", .orange, true)
+        }
+
+        // Case 3: No subscription - show "Enable AI" (opens settings to subscribe)
+        if !hasCloudSubscription && currentMethod != .cloudAI {
+            return (true, .cloudAI, "Enable AI", "cloud.fill", .orange, true)
+        }
+
+        // Case 4: If Apple AI is available and not used yet, suggest Apple AI
+        if appleAvailable && currentMethod != .appleAI && !cloudEnabled {
+            return (true, .appleAI, "Analyze with AI", "apple.logo", .orange, false)
+        }
+
+        return nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -272,8 +311,9 @@ private struct HomeworkExercisesDetailView: View {
                             .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
                         }
 
-                        // Analyze with Google Gemini button
-                        if useCloudAnalysis {
+                        // Analyze with Google Gemini button or upgrade/enable AI prompt
+                        if useCloudAnalysis && item.usedAnalysisMethod == .cloudAI {
+                            // Already analyzed with cloud, show cloud reanalysis button
                             Button(action: {
                                 isReanalyzing = true
                                 viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
@@ -292,54 +332,37 @@ private struct HomeworkExercisesDetailView: View {
                                 .cornerRadius(10)
                             }
                             .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+                        } else if let upgrade = getUpgradeOption() {
+                            // Show enable/upgrade AI button
+                            Button(action: {
+                                if upgrade.opensSettings {
+                                    // Open settings to enable cloud AI or subscribe
+                                    showingSettings = true
+                                } else {
+                                    // Perform analysis
+                                    isReanalyzing = true
+                                    viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: upgrade.method == .cloudAI)
+                                }
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: upgrade.icon)
+                                        .font(.title2)
+                                    Text(upgrade.label)
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(upgrade.color.opacity(0.1))
+                                .foregroundColor(upgrade.color)
+                                .cornerRadius(10)
+                            }
+                            .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
                         }
                     }
                     .padding(.horizontal)
                     .padding(.top, 12)
                     .padding(.bottom, 8)
-
-                    // Show upgrade prompt if using basic OCR-only mode
-                    if !useCloudAnalysis && analysis.exercises.count == 1 && analysis.exercises.first?.subject == "General" {
-                        VStack(spacing: 12) {
-                            if AIAnalysisService.shared.isModelAvailable {
-                                // Has Apple Intelligence, suggest cloud upgrade for better results
-                                HStack(spacing: 12) {
-                                    Image(systemName: "sparkles")
-                                        .font(.title3)
-                                        .foregroundColor(.blue)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Upgrade to Cloud AI")
-                                            .font(.headline)
-                                        Text("Get multimodal analysis with much better clarity and exercise detection using Google's Gemini AI.")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .padding()
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(10)
-                            } else {
-                                // No Apple Intelligence, encourage cloud subscription
-                                HStack(spacing: 12) {
-                                    Image(systemName: "wand.and.stars")
-                                        .font(.title3)
-                                        .foregroundColor(.purple)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Upgrade to Cloud AI")
-                                            .font(.headline)
-                                        Text("Unlock AI-powered exercise detection and intelligent splitting with Google's Gemini AI.")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .padding()
-                                .background(Color.purple.opacity(0.1))
-                                .cornerRadius(10)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 8)
-                    }
 
                     Divider()
 
@@ -403,49 +426,6 @@ private struct HomeworkExercisesDetailView: View {
                     .padding(.top, 12)
                     .padding(.bottom, 8)
 
-                    // Show upgrade prompt if using basic OCR-only mode
-                    if !useCloudAnalysis && item.analysisResult?.exercises.count == 1 && item.analysisResult?.exercises.first?.subject == "General" {
-                        VStack(spacing: 12) {
-                            if AIAnalysisService.shared.isModelAvailable {
-                                // Has Apple Intelligence, suggest cloud upgrade for better results
-                                HStack(spacing: 12) {
-                                    Image(systemName: "sparkles")
-                                        .font(.title3)
-                                        .foregroundColor(.blue)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Upgrade to Cloud AI")
-                                            .font(.headline)
-                                        Text("Get multimodal analysis with much better clarity and exercise detection using Google's Gemini AI.")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .padding()
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(10)
-                            } else {
-                                // No Apple Intelligence, encourage cloud subscription
-                                HStack(spacing: 12) {
-                                    Image(systemName: "wand.and.stars")
-                                        .font(.title3)
-                                        .foregroundColor(.purple)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Upgrade to Cloud AI")
-                                            .font(.headline)
-                                        Text("Unlock AI-powered exercise detection and intelligent splitting with Google's Gemini AI.")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .padding()
-                                .background(Color.purple.opacity(0.1))
-                                .cornerRadius(10)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 8)
-                    }
-
                     Divider()
 
                     // Original content
@@ -498,6 +478,10 @@ private struct HomeworkExercisesDetailView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+                .environmentObject(BiometricAuthService.shared)
         }
     }
 

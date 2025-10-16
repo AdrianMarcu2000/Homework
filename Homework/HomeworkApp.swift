@@ -14,6 +14,7 @@ import FirebaseAppCheck
 struct HomeworkApp: App {
     let persistenceController = PersistenceController.shared
     @StateObject private var authService = BiometricAuthService.shared
+    @StateObject private var subscriptionService = SubscriptionService.shared
 
     init() {
         // Initialize Firebase
@@ -30,6 +31,7 @@ struct HomeworkApp: App {
             RootView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .environmentObject(authService)
+                .environmentObject(subscriptionService)
         }
     }
 }

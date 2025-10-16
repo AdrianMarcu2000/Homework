@@ -60,9 +60,6 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// The newly created homework item
     @Published var newlyCreatedItem: Item?
 
-    /// Controls the visibility of the cloud analysis alert
-    @Published var showCloudAnalysisAlert = false
-
     // MARK: - Private Properties
 
     /// The Core Data managed object context for database operations (used for initialization)
@@ -124,24 +121,61 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// This method:
     /// 1. Shows the text sheet with a progress indicator
     /// 2. Calls OCRService to extract text and position blocks from the image
-    /// 3. Performs AI analysis to segment lessons and exercises
+    /// 3. Performs AI analysis to segment lessons and exercises (if available)
     /// 4. Updates the UI with extracted text or error message on completion
     ///
     /// - Parameter image: The UIImage to perform text recognition on
     func performOCR(on image: UIImage) {
-        if !AIAnalysisService.shared.isModelAvailable && !useCloudAnalysis {
-            self.showCloudAnalysisAlert = true
-            return
-        }
-
         let newItem = createHomeworkItem(from: image, context: initialContext)
         selectedImage = nil
         showImagePicker = false
+
+        // Determine if we should use AI analysis
+        let shouldUseAI = AIAnalysisService.shared.isModelAvailable || useCloudAnalysis
         let useCloud = self.useCloudAnalysis || !AIAnalysisService.shared.isModelAvailable
 
         Task.detached(priority: .background) {
             do {
                 let ocrResult = try await OCRService.shared.recognizeTextWithBlocks(from: image)
+
+                // If no AI is available, create a single exercise from OCR text
+                if !shouldUseAI {
+                    await MainActor.run {
+                        newItem.extractedText = ocrResult.fullText
+
+                        // Create a single exercise containing all OCR text
+                        let singleExercise = AIAnalysisService.Exercise(
+                            exerciseNumber: "1",
+                            type: "other",
+                            fullContent: ocrResult.fullText,
+                            startY: 0.0,
+                            endY: 1.0,
+                            subject: "General",
+                            inputType: "text"
+                        )
+
+                        let ocrOnlyAnalysis = AIAnalysisService.AnalysisResult(
+                            exercises: [singleExercise]
+                        )
+
+                        // Save as JSON
+                        do {
+                            let encoder = JSONEncoder()
+                            encoder.outputFormatting = .prettyPrinted
+                            let jsonData = try encoder.encode(ocrOnlyAnalysis)
+                            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                                newItem.analysisJSON = jsonString
+                            }
+                            try self.initialContext.save()
+                            print("✅ OCR-only processing complete (created single exercise)")
+                        } catch {
+                            print("Error saving context after OCR: \(error)")
+                        }
+                    }
+                    return
+                }
+
+                // Perform AI analysis
                 let aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
 
                 let analysisResult: Result<AIAnalysisService.AnalysisResult, Error>
@@ -150,8 +184,8 @@ class HomeworkCaptureViewModel: ObservableObject {
                 } else {
                     analysisResult = await AIAnalysisService.shared.analyzeHomeworkWithSegments(image: image, ocrBlocks: aiBlocks)
                 }
-                
-                DispatchQueue.main.async {
+
+                await MainActor.run {
                     switch analysisResult {
                     case .success(let analysis):
                         do {
@@ -164,13 +198,13 @@ class HomeworkCaptureViewModel: ObservableObject {
                     case .failure:
                         newItem.analysisJSON = "failed"
                     }
-                    
+
                     do {
                         try self.initialContext.save()
                     } catch {
                         print("Error saving context after analysis: \(error)")
                     }
-                    
+
                     if case .success(let analysis) = analysisResult {
                         AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
                             DispatchQueue.main.async {
@@ -180,7 +214,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                                 case .failure:
                                     newItem.extractedText = "Found \(analysis.exercises.count) exercise(s)."
                                 }
-                                
+
                                 do {
                                     try self.initialContext.save()
                                 } catch {
@@ -191,7 +225,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                     }
                 }
             } catch {
-                DispatchQueue.main.async {
+                await MainActor.run {
                     newItem.analysisJSON = "failed"
                     do {
                         try self.initialContext.save()
@@ -365,6 +399,9 @@ class HomeworkCaptureViewModel: ObservableObject {
 
         print("DEBUG REANALYZE: Starting re-analysis for item with timestamp: \(item.timestamp?.description ?? "none")")
 
+        // Check if AI analysis is available
+        let shouldUseAI = AIAnalysisService.shared.isModelAvailable || useCloudAnalysis
+
         // Step 1: Perform OCR with block position information
         OCRService.shared.recognizeTextWithBlocks(from: image) { [weak self] result in
             guard let self = self else { return }
@@ -374,6 +411,46 @@ class HomeworkCaptureViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.ocrBlocks = ocrResult.blocks
                     print("DEBUG REANALYZE: OCR completed with \(ocrResult.blocks.count) blocks")
+                }
+
+                // If no AI available, create single exercise from OCR text
+                if !shouldUseAI {
+                    DispatchQueue.main.async {
+                        self.isProcessingOCR = false
+                        item.extractedText = ocrResult.fullText
+
+                        // Create a single exercise containing all OCR text
+                        let singleExercise = AIAnalysisService.Exercise(
+                            exerciseNumber: "1",
+                            type: "other",
+                            fullContent: ocrResult.fullText,
+                            startY: 0.0,
+                            endY: 1.0,
+                            subject: "General",
+                            inputType: "text"
+                        )
+
+                        let ocrOnlyAnalysis = AIAnalysisService.AnalysisResult(
+                            exercises: [singleExercise]
+                        )
+
+                        // Save as JSON
+                        do {
+                            let encoder = JSONEncoder()
+                            encoder.outputFormatting = .prettyPrinted
+                            let jsonData = try encoder.encode(ocrOnlyAnalysis)
+                            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                                item.analysisJSON = jsonString
+                            }
+                            try context.save()
+                            print("✅ OCR-only reanalysis complete (created single exercise)")
+                        } catch {
+                            print("❌ Error saving OCR-only reanalysis: \(error)")
+                        }
+
+                        self.reanalyzingItem = nil
+                    }
+                    return
                 }
 
                 // Step 2: Perform AI analysis

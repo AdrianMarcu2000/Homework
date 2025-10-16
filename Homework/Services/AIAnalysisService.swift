@@ -20,8 +20,25 @@ class AIAnalysisService {
     private init() {}
 
     /// Check if the Foundation Model is available
+    /// Returns true only on devices that genuinely support Apple Intelligence
     var isModelAvailable: Bool {
-        SystemLanguageModel.default.isAvailable
+        // First check the system's reported availability
+        guard SystemLanguageModel.default.isAvailable else {
+            return false
+        }
+
+        // Additional check: Apple Intelligence requires iOS 18.1+ and specific hardware
+        // It's only available on iPad Pro (M1 and later), iPad Air (M1 and later)
+        // For simulators, it reports available but doesn't actually work
+
+        #if targetEnvironment(simulator)
+        // In simulator, only show as available if we can verify it works
+        // Simulators typically don't have actual AI support
+        return false
+        #else
+        // On real devices, trust the system's isAvailable check
+        return true
+        #endif
     }
 
     /// Represents an OCR text block with its position

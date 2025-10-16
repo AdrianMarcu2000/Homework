@@ -407,6 +407,306 @@ class CloudAnalysisService {
         }
     }
 
+    /// Generates progressive hints for an exercise using cloud AI
+    ///
+    /// - Parameters:
+    ///   - exercise: The exercise to generate hints for
+    ///   - completion: Callback with array of 4 progressive hints
+    func generateHints(
+        for exercise: AIAnalysisService.Exercise,
+        completion: @escaping (Result<[AIAnalysisService.Hint], Error>) -> Void
+    ) {
+        #if DEBUG
+        let appCheckToken = "emulator-bypass-token"
+        print("🔐 DEBUG CLOUD: Using emulator bypass token for hints generation")
+        performHintsRequest(exercise: exercise, appCheckToken: appCheckToken, completion: completion)
+        #else
+        print("🔐 RELEASE: Getting App Check token for hints generation...")
+        AppCheck.appCheck().token(forcingRefresh: false) { token, error in
+            if let error = error {
+                print("❌ App Check token error - \(error.localizedDescription)")
+                completion(.failure(CloudAnalysisError.appCheckFailed(error)))
+                return
+            }
+
+            guard let token = token else {
+                print("❌ No App Check token received")
+                completion(.failure(CloudAnalysisError.noAppCheckToken))
+                return
+            }
+
+            let appCheckToken = token.token
+            print("✅ App Check token obtained successfully")
+
+            self.performHintsRequest(exercise: exercise, appCheckToken: appCheckToken, completion: completion)
+        }
+        #endif
+    }
+
+    /// Generates similar practice exercises based on an existing exercise
+    ///
+    /// - Parameters:
+    ///   - exercise: The original exercise to base similar exercises on
+    ///   - count: Number of similar exercises to generate (default: 3)
+    ///   - completion: Callback with array of generated exercises
+    func generateSimilarExercises(
+        basedOn exercise: AIAnalysisService.Exercise,
+        count: Int = 3,
+        completion: @escaping (Result<[AIAnalysisService.SimilarExercise], Error>) -> Void
+    ) {
+        #if DEBUG
+        let appCheckToken = "emulator-bypass-token"
+        print("🔐 DEBUG CLOUD: Using emulator bypass token for similar exercises generation")
+        performSimilarExercisesRequest(exercise: exercise, count: count, appCheckToken: appCheckToken, completion: completion)
+        #else
+        print("🔐 RELEASE: Getting App Check token for similar exercises generation...")
+        AppCheck.appCheck().token(forcingRefresh: false) { token, error in
+            if let error = error {
+                print("❌ App Check token error - \(error.localizedDescription)")
+                completion(.failure(CloudAnalysisError.appCheckFailed(error)))
+                return
+            }
+
+            guard let token = token else {
+                print("❌ No App Check token received")
+                completion(.failure(CloudAnalysisError.noAppCheckToken))
+                return
+            }
+
+            let appCheckToken = token.token
+            print("✅ App Check token obtained successfully")
+
+            self.performSimilarExercisesRequest(exercise: exercise, count: count, appCheckToken: appCheckToken, completion: completion)
+        }
+        #endif
+    }
+
+    /// Performs the actual similar exercises generation request
+    private func performSimilarExercisesRequest(
+        exercise: AIAnalysisService.Exercise,
+        count: Int,
+        appCheckToken: String,
+        completion: @escaping (Result<[AIAnalysisService.SimilarExercise], Error>) -> Void,
+        retryCount: Int = 0
+    ) {
+        let url = URL(string: "\(Config.baseURL)/generateSimilarExercises")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+
+        // Create request body
+        let requestBody: [String: Any] = [
+            "exerciseNumber": exercise.exerciseNumber,
+            "exerciseType": exercise.type,
+            "exerciseContent": exercise.fullContent,
+            "subject": exercise.subject ?? "general",
+            "count": count
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        } catch {
+            completion(.failure(CloudAnalysisError.encodingFailed(error)))
+            return
+        }
+
+        print("DEBUG CLOUD SIMILAR: Sending request to \(url.absoluteString)")
+        if retryCount > 0 {
+            print("DEBUG CLOUD SIMILAR: Retry attempt \(retryCount) of \(Config.maxRetries)")
+        }
+
+        let task = urlSession.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                let nsError = error as NSError
+                print("DEBUG CLOUD SIMILAR: Network error - \(error.localizedDescription)")
+
+                let isRetryableError = nsError.domain == NSURLErrorDomain &&
+                    (nsError.code == NSURLErrorTimedOut ||
+                     nsError.code == NSURLErrorNetworkConnectionLost ||
+                     nsError.code == NSURLErrorCannotConnectToHost)
+
+                if isRetryableError && retryCount < Config.maxRetries {
+                    print("⚠️ Retryable error detected, scheduling retry \(retryCount + 1)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performSimilarExercisesRequest(
+                            exercise: exercise,
+                            count: count,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
+                completion(.failure(CloudAnalysisError.networkError(error)))
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(CloudAnalysisError.invalidResponse))
+                return
+            }
+
+            print("DEBUG CLOUD SIMILAR: Response status code: \(httpResponse.statusCode)")
+
+            guard httpResponse.statusCode == 200 else {
+                let errorMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
+                print("DEBUG CLOUD SIMILAR: Error response: \(errorMessage)")
+
+                if httpResponse.statusCode >= 500 && retryCount < Config.maxRetries {
+                    print("⚠️ Server error (5xx), scheduling retry \(retryCount + 1)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performSimilarExercisesRequest(
+                            exercise: exercise,
+                            count: count,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
+                completion(.failure(CloudAnalysisError.serverError(httpResponse.statusCode, errorMessage)))
+                return
+            }
+
+            guard let data = data else {
+                completion(.failure(CloudAnalysisError.noData))
+                return
+            }
+
+            do {
+                let exercises = try JSONDecoder().decode([AIAnalysisService.SimilarExercise].self, from: data)
+                print("DEBUG CLOUD SIMILAR: Successfully decoded \(exercises.count) similar exercises")
+                completion(.success(exercises))
+            } catch {
+                print("DEBUG CLOUD SIMILAR: Decoding error - \(error.localizedDescription)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("DEBUG CLOUD SIMILAR: Raw response: \(jsonString)")
+                }
+                completion(.failure(CloudAnalysisError.decodingFailed(error)))
+            }
+        }
+
+        task.resume()
+    }
+
+    /// Performs the actual hints generation request
+    private func performHintsRequest(
+        exercise: AIAnalysisService.Exercise,
+        appCheckToken: String,
+        completion: @escaping (Result<[AIAnalysisService.Hint], Error>) -> Void,
+        retryCount: Int = 0
+    ) {
+        let url = URL(string: "\(Config.baseURL)/generateHints")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+
+        // Create request body
+        let requestBody: [String: Any] = [
+            "exerciseNumber": exercise.exerciseNumber,
+            "exerciseType": exercise.type,
+            "exerciseContent": exercise.fullContent,
+            "subject": exercise.subject ?? "general"
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        } catch {
+            completion(.failure(CloudAnalysisError.encodingFailed(error)))
+            return
+        }
+
+        print("DEBUG CLOUD HINTS: Sending request to \(url.absoluteString)")
+        if retryCount > 0 {
+            print("DEBUG CLOUD HINTS: Retry attempt \(retryCount) of \(Config.maxRetries)")
+        }
+
+        let task = urlSession.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                let nsError = error as NSError
+                print("DEBUG CLOUD HINTS: Network error - \(error.localizedDescription)")
+
+                let isRetryableError = nsError.domain == NSURLErrorDomain &&
+                    (nsError.code == NSURLErrorTimedOut ||
+                     nsError.code == NSURLErrorNetworkConnectionLost ||
+                     nsError.code == NSURLErrorCannotConnectToHost)
+
+                if isRetryableError && retryCount < Config.maxRetries {
+                    print("⚠️ Retryable error detected, scheduling retry \(retryCount + 1)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performHintsRequest(
+                            exercise: exercise,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
+                completion(.failure(CloudAnalysisError.networkError(error)))
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(CloudAnalysisError.invalidResponse))
+                return
+            }
+
+            print("DEBUG CLOUD HINTS: Response status code: \(httpResponse.statusCode)")
+
+            guard httpResponse.statusCode == 200 else {
+                let errorMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
+                print("DEBUG CLOUD HINTS: Error response: \(errorMessage)")
+
+                if httpResponse.statusCode >= 500 && retryCount < Config.maxRetries {
+                    print("⚠️ Server error (5xx), scheduling retry \(retryCount + 1)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performHintsRequest(
+                            exercise: exercise,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
+                completion(.failure(CloudAnalysisError.serverError(httpResponse.statusCode, errorMessage)))
+                return
+            }
+
+            guard let data = data else {
+                completion(.failure(CloudAnalysisError.noData))
+                return
+            }
+
+            do {
+                let hints = try JSONDecoder().decode([AIAnalysisService.Hint].self, from: data)
+                print("DEBUG CLOUD HINTS: Successfully decoded \(hints.count) hints")
+                completion(.success(hints))
+            } catch {
+                print("DEBUG CLOUD HINTS: Decoding error - \(error.localizedDescription)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("DEBUG CLOUD HINTS: Raw response: \(jsonString)")
+                }
+                completion(.failure(CloudAnalysisError.decodingFailed(error)))
+            }
+        }
+
+        task.resume()
+    }
+
     /// Errors that can occur during cloud analysis
     enum CloudAnalysisError: LocalizedError {
         case imageConversionFailed

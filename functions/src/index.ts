@@ -1,6 +1,56 @@
 import * as functions from 'firebase-functions';
 import fetch from 'node-fetch';
 
+/**
+ * Fixes common LaTeX escaping issues in JSON strings from Gemini.
+ * Gemini sometimes generates malformed LaTeX even with structured output mode.
+ */
+function fixLatexEscaping(jsonText: string): string {
+    // First, protect already-correct double-backslash sequences
+    let fixed = jsonText
+        .replace(/\\\\\(/g, '\u0001LPAREN\u0001')
+        .replace(/\\\\\)/g, '\u0001RPAREN\u0001')
+        .replace(/\\\\\[/g, '\u0001LBRACKET\u0001')
+        .replace(/\\\\\]/g, '\u0001RBRACKET\u0001')
+        .replace(/\\\\text\{/g, '\u0001TEXTBRACE\u0001')
+        .replace(/\\\\text /g, '\u0001TEXTSPACE\u0001')
+        .replace(/\\\\frac/g, '\u0001FRAC\u0001')
+        .replace(/\\\\Omega/g, '\u0001OMEGA\u0001')
+        .replace(/\\\\pi/g, '\u0001PI\u0001');
+
+    // Fix the common malformed pattern: ")text{" which should be " \text{"
+    // Example: \(4)text{V) -> \(4 \text{ V}\)
+    fixed = fixed.replace(/\)text\{/g, ' \\text{');
+
+    // Fix single backslash LaTeX delimiters: \( -> \\(, \) -> \\)
+    fixed = fixed.replace(/([^\\]|^)\\(\()/g, '$1\\\\$2');
+    fixed = fixed.replace(/([^\\])\\(\))/g, '$1\\\\$2');
+
+    // Fix pipe characters: |( -> \\(, |) -> \\)
+    fixed = fixed.replace(/\|\(/g, '\\\\(');
+    fixed = fixed.replace(/\|\)/g, '\\\\)');
+
+    // Fix patterns with units: 4.0\text V -> 4.0\text{ V}
+    fixed = fixed.replace(/\\text ([A-Za-z])/g, '\\\\text{ $1}');
+
+    // Fix closing patterns: VH) -> V\), mA' -> mA\)
+    fixed = fixed.replace(/([A-Z])H\)/g, '$1\\\\)');
+    fixed = fixed.replace(/([a-zA-Z])'/g, '$1\\\\)');
+
+    // Restore protected sequences
+    fixed = fixed
+        .replace(/\u0001LPAREN\u0001/g, '\\\\(')
+        .replace(/\u0001RPAREN\u0001/g, '\\\\)')
+        .replace(/\u0001LBRACKET\u0001/g, '\\\\[')
+        .replace(/\u0001RBRACKET\u0001/g, '\\\\]')
+        .replace(/\u0001TEXTBRACE\u0001/g, '\\\\text{')
+        .replace(/\u0001TEXTSPACE\u0001/g, '\\\\text ')
+        .replace(/\u0001FRAC\u0001/g, '\\\\frac')
+        .replace(/\u0001OMEGA\u0001/g, '\\\\Omega')
+        .replace(/\u0001PI\u0001/g, '\\\\pi');
+
+    return fixed;
+}
 
 // The Analysis Schema defines the required output structure for homework analysis.
 // This schema focuses on identifying EXERCISES only. Non-exercise content (headers,
@@ -508,4 +558,429 @@ Respond in JSON format with:
     // Final error response
     functions.logger.error('💥 Failed to verify answer after retries.', lastError);
     res.status(500).send(`Failed to verify answer: ${lastError?.message || 'Unknown error occurred.'}`);
+});
+
+/**
+ * Generates progressive hints for an exercise using Gemini AI.
+ *
+ * SECURITY: This function enforces Firebase App Check to verify requests come from legitimate app instances.
+ */
+export const generateHints = functions.https.onRequest(async (req, res) => {
+    // Check for POST request
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed. Use POST.');
+        return;
+    }
+
+    // SECURITY: Verify App Check token
+    const appCheckToken = req.header('X-Firebase-AppCheck');
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+    if (!appCheckToken) {
+        functions.logger.warn('Request rejected: Missing App Check token');
+        res.status(401).send('Unauthorized: App Check token required.');
+        return;
+    }
+
+    functions.logger.info(`✅ App Check token received for hints generation`);
+
+    // Allow bypass token in emulator mode
+    if (isEmulator && appCheckToken === 'emulator-bypass-token') {
+        functions.logger.info('🔐 EMULATOR MODE: Using bypass token for local development');
+    }
+
+    // API Key
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        functions.logger.error("GEMINI_API_KEY environment variable not set.");
+        res.status(500).send('Server configuration error: API Key missing.');
+        return;
+    }
+
+    // Input validation
+    const { exerciseNumber, exerciseType, exerciseContent, subject } = req.body;
+
+    if (!exerciseContent || !exerciseType) {
+        res.status(400).send('Missing required parameters: exerciseContent or exerciseType.');
+        return;
+    }
+
+    // System instruction for hint generation
+    const systemInstruction = `You are an educational tutor providing progressive hints to help students solve exercises.
+
+Generate exactly 4 progressive hints to help students solve this exercise. Each hint should reveal more information:
+
+Level 1: Basic hint - Point the student in the right direction for ALL parts without giving away the method
+Level 2: Method hint - Explain the approach or formula needed for EACH part, but don't solve
+Level 3: Detailed hint - Guide through the steps for EACH part, getting very close to the solution but NOT giving final answers
+Level 4: Complete answer - Provide the full solution for ALL parts with clear explanations
+
+IMPORTANT: If this exercise has multiple sub-parts (like a, b, c or 1, 2, 3), address ALL parts in each hint level.
+
+CRITICAL JSON FORMATTING - LaTeX Escaping Rules:
+In JSON strings, every backslash must be written as double backslash (\\\\).
+
+For LaTeX math notation:
+- Inline math delimiters: \\\\( and \\\\)
+- Block math delimiters: \\\\[ and \\\\]
+- LaTeX commands like \\\\frac, \\\\text, \\\\pi also need double backslash
+
+Concrete examples of CORRECT JSON:
+- "content": "Calculate \\\\(x^2 + 5\\\\)"
+- "content": "Simplify \\\\(\\\\frac{a}{b}\\\\)"
+- "content": "The voltage is \\\\(2.0\\\\text{ V}\\\\)"
+- "content": "Current is \\\\(1.5\\\\text{ A}\\\\)"
+- "content": "Resistance: \\\\(10\\\\,\\\\Omega\\\\)"
+
+WRONG examples (do NOT do this):
+- "content": "Calculate \\(x^2\\)" ← Single backslash will break JSON
+- "content": "Voltage \\(2.0 ||text V\\)" ← Wrong syntax, missing backslash before text
+- "content": "Current |(1.0 \\ |text A" ← Malformed, random characters
+
+Remember: In your JSON output, write \\\\text NOT \\text, write \\\\( NOT \\(
+
+Guidelines:
+- Be encouraging and supportive
+- Each hint progressively more detailed
+- Use clear, student-friendly language
+- Proper LaTeX syntax with correct JSON escaping
+- For multi-part exercises, address every sub-part in every hint level`;
+
+    // Build the user prompt
+    const userPrompt = `Exercise Type: ${exerciseType}
+${subject ? `Subject: ${subject}` : ''}
+Exercise Content: ${exerciseContent}
+
+Generate 4 progressive hints for this exercise. Return your response as a JSON array.
+
+CRITICAL LaTeX Formatting in JSON:
+✓ CORRECT: "content": "The voltage is \\\\(2.0\\\\text{ V}\\\\)"
+✗ WRONG: "content": "The voltage is \\(2.0 ||text V\\)"
+✗ WRONG: "content": "The voltage is |(2.0 \\ |text V"
+
+Example JSON structure:
+[
+    {
+        "level": 1,
+        "title": "Think About...",
+        "content": "A gentle nudge in the right direction"
+    },
+    {
+        "level": 2,
+        "title": "Method to Use",
+        "content": "Explain the approach with proper math notation like \\\\(formula\\\\)"
+    },
+    {
+        "level": 3,
+        "title": "Step-by-Step Guide",
+        "content": "Walk through the solution process step by step"
+    },
+    {
+        "level": 4,
+        "title": "Complete Answer",
+        "content": "Full solution with explanations"
+    }
+]`;
+
+    // Construct the API payload
+    const model = "gemini-2.5-flash";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const payload = {
+        contents: [
+            {
+                role: "user",
+                parts: [{ text: userPrompt }]
+            }
+        ],
+        generationConfig: {
+            responseMimeType: "application/json"
+        },
+        systemInstruction: {
+            parts: [{ text: systemInstruction }]
+        }
+    };
+
+    // Call the API with retry logic
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
+
+    functions.logger.info(`💡 Generating hints for exercise #${exerciseNumber || 'unknown'}`);
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+            const startTime = Date.now();
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const elapsed = Date.now() - startTime;
+            functions.logger.info(`⏱️  Hints generation completed in ${elapsed}ms with status ${response.status}`);
+
+            const result: any = await response.json();
+
+            if (!response.ok) {
+                throw new Error(`API returned status ${response.status}: ${JSON.stringify(result)}`);
+            }
+
+            let jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!jsonText) {
+                throw new Error('LLM output content is missing.');
+            }
+
+            // Clean up potential JSON formatting issues from LLM
+            // Remove markdown code block wrapper if present
+            jsonText = jsonText.trim();
+            if (jsonText.startsWith('```json')) {
+                jsonText = jsonText.substring(7);
+            }
+            if (jsonText.startsWith('```')) {
+                jsonText = jsonText.substring(3);
+            }
+            if (jsonText.endsWith('```')) {
+                jsonText = jsonText.substring(0, jsonText.length - 3);
+            }
+            jsonText = jsonText.trim();
+
+            // Fix common LaTeX escaping issues before parsing
+            jsonText = fixLatexEscaping(jsonText);
+
+            functions.logger.info(`📝 Parsing hints JSON (length: ${jsonText.length})`);
+
+            const hints = JSON.parse(jsonText);
+
+            functions.logger.info(`✅ Generated ${hints.length} hints successfully`);
+
+            // Return the hints array
+            res.status(200).json(hints);
+            return;
+
+        } catch (error) {
+            lastError = error as Error;
+            functions.logger.warn(`❌ Hints generation attempt ${attempt + 1} failed: ${lastError.message}`);
+
+            if (attempt < MAX_RETRIES - 1) {
+                const delay = Math.pow(2, attempt) * 1000;
+                functions.logger.info(`⏳ Retrying in ${Math.round(delay / 1000)}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    // Final error response
+    functions.logger.error('💥 Failed to generate hints after retries.', lastError);
+    res.status(500).send(`Failed to generate hints: ${lastError?.message || 'Unknown error occurred.'}`);
+});
+
+/**
+ * Generates similar practice exercises based on an existing exercise using Gemini AI.
+ *
+ * SECURITY: This function enforces Firebase App Check to verify requests come from legitimate app instances.
+ */
+export const generateSimilarExercises = functions.https.onRequest(async (req, res) => {
+    // Check for POST request
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed. Use POST.');
+        return;
+    }
+
+    // SECURITY: Verify App Check token
+    const appCheckToken = req.header('X-Firebase-AppCheck');
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+    if (!appCheckToken) {
+        functions.logger.warn('Request rejected: Missing App Check token');
+        res.status(401).send('Unauthorized: App Check token required.');
+        return;
+    }
+
+    functions.logger.info(`✅ App Check token received for similar exercises generation`);
+
+    // Allow bypass token in emulator mode
+    if (isEmulator && appCheckToken === 'emulator-bypass-token') {
+        functions.logger.info('🔐 EMULATOR MODE: Using bypass token for local development');
+    }
+
+    // API Key
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        functions.logger.error("GEMINI_API_KEY environment variable not set.");
+        res.status(500).send('Server configuration error: API Key missing.');
+        return;
+    }
+
+    // Input validation
+    const { exerciseNumber, exerciseType, exerciseContent, subject, count = 3 } = req.body;
+
+    if (!exerciseContent || !exerciseType) {
+        res.status(400).send('Missing required parameters: exerciseContent or exerciseType.');
+        return;
+    }
+
+    // System instruction for similar exercise generation
+    const systemInstruction = `You are an educational exercise generator. Your task is to generate similar practice exercises based on the original exercise provided below. If the exercise has subexercises keep the number of subexercises for each.
+
+Generate exactly 3 exercises with the following difficulty levels:
+1. **Easier:** A practice exercise that is simpler than the original (e.g., uses smaller numbers, has fewer steps, or is a more basic version of the concept).
+2. **Same Difficulty:** A practice exercise that has a similar complexity to the original.
+3. **Harder:** A practice exercise that is more challenging than the original (e.g., uses larger numbers, requires more steps, or introduces a more complex variation of the concept).
+
+CRITICAL JSON FORMATTING - LaTeX Escaping Rules:
+In JSON strings, every backslash must be written as double backslash (\\\\).
+
+For LaTeX math notation:
+- Inline math delimiters: \\\\( and \\\\)
+- Block math delimiters: \\\\[ and \\\\]
+- LaTeX commands like \\\\frac, \\\\text, \\\\pi also need double backslash
+
+Concrete examples of CORRECT JSON:
+- "content": "Calculate \\\\(x^2 + 5\\\\)"
+- "content": "Simplify \\\\(\\\\frac{a}{b}\\\\)"
+- "content": "The voltage is \\\\(2.0\\\\text{ V}\\\\)"
+- "content": "Current is \\\\(1.5\\\\text{ A}\\\\)"
+- "content": "Resistance: \\\\(10\\\\,\\\\Omega\\\\)"
+
+WRONG examples (do NOT do this):
+- "content": "Calculate \\(x^2\\)" ← Single backslash will break JSON
+- "content": "Voltage \\(2.0 ||text V\\)" ← Wrong syntax, missing backslash before text
+- "content": "Current |(1.0 \\ |text A" ← Malformed, random characters
+
+Remember: In your JSON output, write \\\\text NOT \\text, write \\\\( NOT \\(
+
+IMPORTANT:
+- Return ONLY valid JSON. Do not include any explanatory text before or after the JSON.
+- All mathematical content MUST use proper LaTeX notation with correct escaping`;
+
+    // Build the user prompt
+    const userPrompt = `Original Exercise:
+Type: ${exerciseType}
+${subject ? `Subject: ${subject}` : ''}
+Content: ${exerciseContent}
+
+Generate exactly ${count} similar practice exercises with varying difficulty levels.
+
+CRITICAL LaTeX Formatting in JSON:
+✓ CORRECT: "content": "The voltage is \\\\(2.0\\\\text{ V}\\\\)"
+✓ CORRECT: "content": "Calculate resistance \\\\(R = \\\\frac{V}{I}\\\\)"
+✗ WRONG: "content": "The voltage is \\(2.0 ||text V\\)"
+✗ WRONG: "content": "Current is |(1.5 \\ |text{ A"
+
+Return a JSON array with this exact structure:
+[
+    {
+        "exerciseNumber": "1",
+        "type": "${exerciseType}",
+        "content": "The exercise text for the 'easier' difficulty level goes here. Use \\\\(math\\\\) for formulas.",
+        "difficulty": "easier"
+    },
+    {
+        "exerciseNumber": "2",
+        "type": "${exerciseType}",
+        "content": "The exercise text for the 'same' difficulty level goes here. Use \\\\(math\\\\) for formulas.",
+        "difficulty": "same"
+    },
+    {
+        "exerciseNumber": "3",
+        "type": "${exerciseType}",
+        "content": "The exercise text for the 'harder' difficulty level goes here. Use \\\\(math\\\\) for formulas.",
+        "difficulty": "harder"
+    }
+]`;
+
+    // Construct the API payload
+    const model = "gemini-2.5-flash";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const payload = {
+        contents: [
+            {
+                role: "user",
+                parts: [{ text: userPrompt }]
+            }
+        ],
+        generationConfig: {
+            responseMimeType: "application/json"
+        },
+        systemInstruction: {
+            parts: [{ text: systemInstruction }]
+        }
+    };
+
+    // Call the API with retry logic
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
+
+    functions.logger.info(`✨ Generating ${count} similar exercises for exercise #${exerciseNumber || 'unknown'}`);
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+            const startTime = Date.now();
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const elapsed = Date.now() - startTime;
+            functions.logger.info(`⏱️  Similar exercises generation completed in ${elapsed}ms with status ${response.status}`);
+
+            const result: any = await response.json();
+
+            if (!response.ok) {
+                throw new Error(`API returned status ${response.status}: ${JSON.stringify(result)}`);
+            }
+
+            let jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!jsonText) {
+                throw new Error('LLM output content is missing.');
+            }
+
+            // Clean up potential JSON formatting issues from LLM
+            // Remove markdown code block wrapper if present
+            jsonText = jsonText.trim();
+            if (jsonText.startsWith('```json')) {
+                jsonText = jsonText.substring(7);
+            }
+            if (jsonText.startsWith('```')) {
+                jsonText = jsonText.substring(3);
+            }
+            if (jsonText.endsWith('```')) {
+                jsonText = jsonText.substring(0, jsonText.length - 3);
+            }
+            jsonText = jsonText.trim();
+
+            // Fix common LaTeX escaping issues before parsing
+            jsonText = fixLatexEscaping(jsonText);
+
+            functions.logger.info(`📝 Parsing similar exercises JSON (length: ${jsonText.length})`);
+
+            const exercises = JSON.parse(jsonText);
+
+            functions.logger.info(`✅ Generated ${exercises.length} similar exercises successfully`);
+
+            // Return the exercises array
+            res.status(200).json(exercises);
+            return;
+
+        } catch (error) {
+            lastError = error as Error;
+            functions.logger.warn(`❌ Similar exercises generation attempt ${attempt + 1} failed: ${lastError.message}`);
+
+            if (attempt < MAX_RETRIES - 1) {
+                const delay = Math.pow(2, attempt) * 1000;
+                functions.logger.info(`⏳ Retrying in ${Math.round(delay / 1000)}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    // Final error response
+    functions.logger.error('💥 Failed to generate similar exercises after retries.', lastError);
+    res.status(500).send(`Failed to generate similar exercises: ${lastError?.message || 'Unknown error occurred.'}`);
 });

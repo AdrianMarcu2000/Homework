@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(defaults write:*)"
+      "Bash(defaults write:*)",
+      "WebSearch",
+      "WebFetch(domain:developers.google.com)"
     ],
     "deny": [],
     "ask": []

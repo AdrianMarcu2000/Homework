@@ -18,6 +18,7 @@ struct AssignmentDetailView: View {
     @State private var analysisProgress: (current: Int, total: Int)?
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
     @State private var didTriggerAutoAnalysis = false
+    @State private var showSubmissionView = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,93 +56,114 @@ struct AssignmentDetailView: View {
                 // Show exercises directly
                 VStack(spacing: 0) {
                     // Action buttons at the top
-                    HStack(spacing: 12) {
-                        // View Original button - show image or text
-                        if assignment.imageData != nil {
-                            // Has image - show image viewer
-                            NavigationLink(destination: AssignmentImageView(assignment: assignment)) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "photo.fill")
-                                        .font(.title2)
-                                    Text("View Original")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
+                    VStack(spacing: 12) {
+                        HStack(spacing: 12) {
+                            // View Original button - show image or text
+                            if assignment.imageData != nil {
+                                // Has image - show image viewer
+                                NavigationLink(destination: AssignmentImageView(assignment: assignment)) {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: "photo.fill")
+                                            .font(.title2)
+                                        Text("View Original")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(10)
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundColor(.blue)
-                                .cornerRadius(10)
-                            }
-                            .buttonStyle(.plain)
-                        } else if assignment.extractedText != nil || assignment.coursework.description != nil {
-                            // No image but has text - show text viewer
-                            NavigationLink(destination: AssignmentTextView(assignment: assignment)) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "doc.text.fill")
-                                        .font(.title2)
-                                    Text("View Original")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
+                                .buttonStyle(.plain)
+                            } else if assignment.extractedText != nil || assignment.coursework.description != nil {
+                                // No image but has text - show text viewer
+                                NavigationLink(destination: AssignmentTextView(assignment: assignment)) {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: "doc.text.fill")
+                                            .font(.title2)
+                                        Text("View Original")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(10)
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundColor(.blue)
-                                .cornerRadius(10)
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+
+                            // Analyze with Apple Intelligence button - always show
+                            if !isAnalyzing {
+                                Button(action: {
+                                    isReanalyzing = true
+                                    if assignment.imageData != nil {
+                                        analyzeAssignment(useCloud: false)
+                                    } else if let text = assignment.extractedText {
+                                        analyzeTextOnly(text: text)
+                                    }
+                                }) {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: "apple.logo")
+                                            .font(.title2)
+                                        Text("Apple AI")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.purple.opacity(0.1))
+                                    .foregroundColor(.purple)
+                                    .cornerRadius(10)
+                                }
+                                .disabled(isReanalyzing || assignment.isDownloadingImage)
+                            }
+
+                            // Analyze with Google Gemini button - show when cloud analysis is enabled
+                            if useCloudAnalysis && !isAnalyzing {
+                                Button(action: {
+                                    isReanalyzing = true
+                                    if assignment.imageData != nil {
+                                        analyzeAssignment(useCloud: true)
+                                    }
+                                }) {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: "cloud.fill")
+                                            .font(.title2)
+                                        Text("Google AI")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.green.opacity(0.1))
+                                    .foregroundColor(.green)
+                                    .cornerRadius(10)
+                                }
+                                .disabled(isReanalyzing || assignment.isDownloadingImage || assignment.imageData == nil)
+                            }
                         }
 
-                        // Analyze with Apple Intelligence button - always show
-                        if !isAnalyzing {
-                            Button(action: {
-                                isReanalyzing = true
-                                if assignment.imageData != nil {
-                                    analyzeAssignment(useCloud: false)
-                                } else if let text = assignment.extractedText {
-                                    analyzeTextOnly(text: text)
-                                }
-                            }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "apple.logo")
-                                        .font(.title2)
-                                    Text("Apple AI")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.purple.opacity(0.1))
-                                .foregroundColor(.purple)
-                                .cornerRadius(10)
+                        // Submit Homework button
+                        Button(action: {
+                            showSubmissionView = true
+                        }) {
+                            HStack {
+                                Image(systemName: "paperplane.fill")
+                                    .font(.title3)
+                                Text("Submit Homework")
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
                             }
-                            .disabled(isReanalyzing || assignment.isDownloadingImage)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
                         }
-
-                        // Analyze with Google Gemini button - show when cloud analysis is enabled
-                        if useCloudAnalysis && !isAnalyzing {
-                            Button(action: {
-                                isReanalyzing = true
-                                if assignment.imageData != nil {
-                                    analyzeAssignment(useCloud: true)
-                                }
-                            }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "cloud.fill")
-                                        .font(.title2)
-                                    Text("Google AI")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.green.opacity(0.1))
-                                .foregroundColor(.green)
-                                .cornerRadius(10)
-                            }
-                            .disabled(isReanalyzing || assignment.isDownloadingImage || assignment.imageData == nil)
-                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal)
                     .padding(.top, 12)
@@ -298,6 +320,9 @@ struct AssignmentDetailView: View {
                     analyzeTextOnly(text: description)
                 }
             }
+        }
+        .sheet(isPresented: $showSubmissionView) {
+            HomeworkSubmissionView(assignment: assignment)
         }
     }
 

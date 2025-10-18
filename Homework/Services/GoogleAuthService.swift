@@ -22,14 +22,16 @@ class GoogleAuthService: ObservableObject {
 
     // MARK: - Configuration
 
-    private let clientID = "190405920069-macgciftprs07shg98ctcrnnpc4s2i16.apps.googleusercontent.com" // TODO: Replace with your Google Cloud OAuth client ID
-//    private let reversedClientID = "com.googleusercontent.apps.190405920069-macgciftprs07shg98ctcrnnpc4s2i16" 
+    private let clientID = "1093713878705-ren052j7epl4g2u4ipq1pfs318n8bcn2.apps.googleusercontent.com" 
 
     // Required scopes for Google Classroom and Drive
     private let scopes = [
         "https://www.googleapis.com/auth/classroom.courses.readonly",
         "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-        "https://www.googleapis.com/auth/drive.readonly"
+        "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
+        "https://www.googleapis.com/auth/classroom.coursework.students.readonly",
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/drive.file"
     ]
 
     private init() {
@@ -87,8 +89,7 @@ class GoogleAuthService: ObservableObject {
                 self.isSignedIn = true
                 self.errorMessage = nil
 
-                print("✅ Google sign-in successful: \(result.user.profile?.email ?? "unknown")")
-                print("🔑 Access token obtained")
+                // Silent sign-in success
 
             } catch {
                 print("❌ Sign-in error: \(error.localizedDescription)")
@@ -107,15 +108,13 @@ class GoogleAuthService: ObservableObject {
     }
 
     /// Get current access token (refresh if expired)
-    nonisolated func getAccessToken() async throws -> String {
+    nonisolated func getAccessToken(forceRefresh: Bool = false) async throws -> String {
         guard let user = await self.currentUser else {
             throw GoogleAuthError.notSignedIn
         }
 
-        // Check if token needs refresh
-        if let expirationDate = user.accessToken.expirationDate,
-           expirationDate < Date() {
-            // Token expired, refresh it
+        // Force refresh if requested or check if token needs refresh
+        if forceRefresh || (user.accessToken.expirationDate.map { $0 < Date() } ?? true) {
             return try await refreshAccessToken()
         }
 

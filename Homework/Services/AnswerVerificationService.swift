@@ -70,9 +70,9 @@ class AnswerVerificationService {
     struct Config {
         static var baseURL: String {
             #if DEBUG
-            return "http://127.0.0.1:5001/homework-66038/us-central1"
+            return "http://127.0.0.1:5001/homework-daef1/us-central1"
             #else
-            return "https://us-central1-homework-66038.cloudfunctions.net"
+            return "https://us-central1-homework-daef1.cloudfunctions.net"
             #endif
         }
     }

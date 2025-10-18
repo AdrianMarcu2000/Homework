@@ -22,23 +22,8 @@ class AIAnalysisService {
     /// Check if the Foundation Model is available
     /// Returns true only on devices that genuinely support Apple Intelligence
     var isModelAvailable: Bool {
-        // First check the system's reported availability
-        guard SystemLanguageModel.default.isAvailable else {
-            return false
-        }
-
-        // Additional check: Apple Intelligence requires iOS 18.1+ and specific hardware
-        // It's only available on iPad Pro (M1 and later), iPad Air (M1 and later)
-        // For simulators, it reports available but doesn't actually work
-
-        #if targetEnvironment(simulator)
-        // In simulator, only show as available if we can verify it works
-        // Simulators typically don't have actual AI support
-        return false
-        #else
-        // On real devices, trust the system's isAvailable check
-        return true
-        #endif
+        // Check the system's reported availability
+        return SystemLanguageModel.default.isAvailable
     }
 
     /// Represents an OCR text block with its position
@@ -244,7 +229,20 @@ Return ONLY the JSON object:
                     print("DEBUG: AI Response for segment \(index + 1):")
                     print(response.content)
 
-                    let jsonString = response.content
+                    var jsonString = response.content
+
+                    // Remove markdown code block wrapper if present
+                    jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if jsonString.hasPrefix("```json") {
+                        jsonString = String(jsonString.dropFirst(7)) // Remove ```json
+                    }
+                    if jsonString.hasPrefix("```") {
+                        jsonString = String(jsonString.dropFirst(3)) // Remove ```
+                    }
+                    if jsonString.hasSuffix("```") {
+                        jsonString = String(jsonString.dropLast(3)) // Remove trailing ```
+                    }
+                    jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
 
                     print("DEBUG: Extracted JSON:")
                     print(jsonString)
@@ -1011,8 +1009,13 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
         // Perform analysis asynchronously
         Task {
             do {
-                // Send the prompt to the Foundation Model
-                let response = try await session.respond(to: prompt)
+                // Create a prompt with both text and image
+                let multimodalPrompt = Prompt {
+                    prompt
+                }
+
+                // Send the prompt with image to the Foundation Model
+                let response = try await session.respond(to: multimodalPrompt)
 
                 // Extract the content from the response
                 let jsonContent = response.content

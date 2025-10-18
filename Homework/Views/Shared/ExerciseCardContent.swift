@@ -210,7 +210,7 @@ struct ExerciseCardContent: View {
             .disabled(isLoadingSimilarExercises)
             
             // Similar Exercises Section
-            SimilarExercisesSectionView(similarExercises: $similarExercises, isLoading: $isLoadingSimilarExercises, errorMessage: $similarExercisesErrorMessage, onGenerate: generateSimilarExercises)
+            SimilarExercisesSectionView(similarExercises: $similarExercises, isLoading: $isLoadingSimilarExercises, errorMessage: $similarExercisesErrorMessage, originalExercise: exercise, onGenerate: generateSimilarExercises)
         }
         .padding()
         .background(Color.green.opacity(0.05))
@@ -372,8 +372,9 @@ private struct SimilarExercisesSectionView: View {
     @Binding var similarExercises: [AIAnalysisService.SimilarExercise]
     @Binding var isLoading: Bool
     @Binding var errorMessage: String?
+    let originalExercise: AIAnalysisService.Exercise
     let onGenerate: () -> Void
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if isLoading {
@@ -399,7 +400,7 @@ private struct SimilarExercisesSectionView: View {
                 Text("Similar Exercises")
                     .font(.headline)
                     .foregroundColor(.secondary)
-                CombinedSimilarExercisesCard(exercises: similarExercises)
+                CombinedSimilarExercisesCard(exercises: similarExercises, originalExercise: originalExercise)
             }
         }
         .padding(.top, 8)
@@ -408,28 +409,18 @@ private struct SimilarExercisesSectionView: View {
 
 private struct CombinedSimilarExercisesCard: View {
     let exercises: [AIAnalysisService.SimilarExercise]
-    
+    let originalExercise: AIAnalysisService.Exercise
+    @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             ForEach(exercises) { exercise in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 4) {
-                            difficultyIcon(for: exercise.difficulty)
-                            Text(exercise.difficulty.capitalized)
-                                .font(.caption)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(difficultyColor(for: exercise.difficulty).opacity(0.2))
-                        .cornerRadius(8)
-                    }
-                    Text(exercise.content)
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .foregroundColor(.primary)
-                }
+                PracticeExerciseCard(
+                    practiceExercise: exercise,
+                    originalExercise: originalExercise,
+                    useCloudAnalysis: useCloudAnalysis
+                )
+
                 if exercise.id != exercises.last?.id {
                     Divider()
                 }
@@ -577,5 +568,221 @@ private struct HintCard: View {
                 .stroke(levelColor.opacity(0.3), lineWidth: 1)
         )
         .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+}
+
+private struct PracticeExerciseCard: View {
+    let practiceExercise: AIAnalysisService.SimilarExercise
+    let originalExercise: AIAnalysisService.Exercise
+    let useCloudAnalysis: Bool
+
+    @State private var canvasData: Data?
+    @State private var isVerifying = false
+    @State private var verificationResult: VerificationResult?
+    @State private var showVerificationResult = false
+
+    private var isMath: Bool {
+        originalExercise.subject == "mathematics"
+    }
+
+    private func difficultyColor(for difficulty: String) -> Color {
+        switch difficulty.lowercased() {
+        case "easier": return .green
+        case "harder": return .red
+        default: return .orange
+        }
+    }
+
+    private func difficultyIcon(for difficulty: String) -> some View {
+        Group {
+            switch difficulty.lowercased() {
+            case "easier":
+                Image(systemName: "arrow.down.circle.fill")
+            case "harder":
+                Image(systemName: "arrow.up.circle.fill")
+            default:
+                Image(systemName: "equal.circle.fill")
+            }
+        }
+        .foregroundColor(difficultyColor(for: difficulty))
+        .font(.caption)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Spacer()
+                HStack(spacing: 4) {
+                    difficultyIcon(for: practiceExercise.difficulty)
+                    Text(practiceExercise.difficulty.capitalized)
+                        .font(.caption)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(difficultyColor(for: practiceExercise.difficulty).opacity(0.2))
+                .cornerRadius(8)
+            }
+
+            LaTeX(practiceExercise.content)
+                .font(.body)
+                .textSelection(.enabled)
+                .foregroundColor(.primary)
+
+            // Answer input area
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Your Answer:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if isMath {
+                    PracticeCanvasView(canvasData: $canvasData, isMath: true)
+                } else {
+                    PracticeCanvasView(canvasData: $canvasData, isMath: false)
+                }
+            }
+
+            // Verify button (only show if cloud analysis is enabled)
+            if useCloudAnalysis {
+                Button(action: verifyAnswer) {
+                    HStack {
+                        if isVerifying {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                            Text("Verifying...")
+                        } else {
+                            Image(systemName: "checkmark.seal.fill")
+                            Text("Verify Answer")
+                        }
+                    }
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+                .disabled(isVerifying)
+            }
+        }
+        .sheet(isPresented: $showVerificationResult) {
+            if let result = verificationResult {
+                VerificationResultView(result: result)
+            }
+        }
+    }
+
+    private func verifyAnswer() {
+        isVerifying = true
+
+        var canvasDrawing: PKDrawing?
+
+        // Get canvas drawing
+        if let savedData = canvasData,
+           let drawing = try? PKDrawing(data: savedData) {
+            canvasDrawing = drawing
+        }
+
+        // Validate we have an answer
+        guard canvasDrawing != nil else {
+            isVerifying = false
+            print("DEBUG VERIFY: No answer found for practice exercise")
+            return
+        }
+
+        // Create a temporary exercise from the practice exercise for verification
+        let tempExercise = AIAnalysisService.Exercise(
+            exerciseNumber: practiceExercise.exerciseNumber,
+            type: practiceExercise.type,
+            fullContent: practiceExercise.content,
+            startY: 0.0,
+            endY: 0.0,
+            subject: originalExercise.subject,
+            inputType: originalExercise.inputType
+        )
+
+        print("DEBUG VERIFY: Verifying practice answer - Type: canvas, Has canvas: \(canvasDrawing != nil)")
+
+        // Call verification service
+        AnswerVerificationService.shared.verifyAnswer(
+            exercise: tempExercise,
+            answerType: "canvas",
+            answerText: nil,
+            canvasDrawing: canvasDrawing
+        ) { [self] result in
+            DispatchQueue.main.async {
+                self.isVerifying = false
+
+                switch result {
+                case .success(let verificationResult):
+                    print("DEBUG VERIFY: Success - Correct: \(verificationResult.isCorrect)")
+                    self.verificationResult = verificationResult
+                    self.showVerificationResult = true
+
+                case .failure(let error):
+                    print("DEBUG VERIFY: Failed - \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+}
+
+private struct PracticeCanvasView: View {
+    @Binding var canvasData: Data?
+    let isMath: Bool
+    @State private var canvas = PKCanvasView()
+
+    var body: some View {
+        CanvasViewRepresentable(canvasView: canvas, canvasData: $canvasData, isMath: isMath)
+            .frame(height: 200)
+            .background(isMath ? Color(red: 1.0, green: 0.98, blue: 0.94) : Color.white)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            )
+    }
+}
+
+private struct CanvasViewRepresentable: UIViewRepresentable {
+    let canvasView: PKCanvasView
+    @Binding var canvasData: Data?
+    let isMath: Bool
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        canvasView.drawingPolicy = .anyInput
+        canvasView.backgroundColor = isMath ? UIColor(red: 1.0, green: 0.98, blue: 0.94, alpha: 1.0) : .white
+        canvasView.isOpaque = false
+
+        // Load existing drawing if available
+        if let data = canvasData,
+           let drawing = try? PKDrawing(data: data) {
+            canvasView.drawing = drawing
+        }
+
+        canvasView.delegate = context.coordinator
+        return canvasView
+    }
+
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        // Update if needed
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(canvasData: $canvasData)
+    }
+
+    class Coordinator: NSObject, PKCanvasViewDelegate {
+        @Binding var canvasData: Data?
+
+        init(canvasData: Binding<Data?>) {
+            _canvasData = canvasData
+        }
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            canvasData = canvasView.drawing.dataRepresentation()
+        }
     }
 }

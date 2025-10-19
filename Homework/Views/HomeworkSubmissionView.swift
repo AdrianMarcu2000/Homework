@@ -12,6 +12,7 @@ import OSLog
 /// View for assembling and displaying homework submission before turning in
 struct HomeworkSubmissionView: View {
     let assignment: ClassroomAssignment
+    var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var isSubmitting = false
     @State private var submitError: String?
@@ -35,131 +36,169 @@ struct HomeworkSubmissionView: View {
     }
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Header
-                VStack(spacing: 8) {
-                    Text("Review Your Homework")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    Text("Check your answers before turning in")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
-                    // Submission state indicator
-                    if let state = submissionState {
-                        HStack(spacing: 6) {
-                            Image(systemName: stateIcon(for: state))
-                                .font(.caption)
-                            Text("Status: \(stateDisplayName(for: state))")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(stateColor(for: state).opacity(0.2))
-                        .foregroundColor(stateColor(for: state))
-                        .cornerRadius(8)
-                    }
+        ZStack {
+            // Dark background overlay
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    dismissView()
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.blue.opacity(0.1))
 
-                Divider()
-
-                // Exercises and answers
-                ScrollView {
-                    VStack(spacing: 20) {
-                        ForEach(Array(exercisesWithAnswers.enumerated()), id: \.offset) { index, item in
-                            ExerciseSubmissionCard(
-                                exerciseNumber: item.exercise.exerciseNumber,
-                                fullContent: item.exercise.fullContent,
-                                answerData: item.answer,
-                                subject: item.exercise.subject,
-                                imageData: assignment.imageData,
-                                startY: item.exercise.startY,
-                                endY: item.exercise.endY
-                            )
+            GeometryReader { geometry in
+                // A4 Paper container - Full height with A4 aspect ratio
+                VStack(spacing: 0) {
+                    // Close button overlay
+                    HStack {
+                        Button(action: { dismissView() }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                         }
+                        .padding()
+                        Spacer()
+                    }
+                    .zIndex(1)
+                    .offset(y: -50)
 
-                        if !hasAnyAnswers {
-                            VStack(spacing: 12) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(.orange)
-                                Text("No Answers Found")
-                                    .font(.headline)
-                                Text("You haven't answered any exercises yet.")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                    // Header
+                    VStack(spacing: 8) {
+                        Text("Review Your Homework")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        Text("Check your answers before turning in")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        // Submission state indicator
+                        if let state = submissionState {
+                            HStack(spacing: 6) {
+                                Image(systemName: stateIcon(for: state))
+                                    .font(.caption)
+                                Text("Status: \(stateDisplayName(for: state))")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
                             }
-                            .padding()
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(stateColor(for: state).opacity(0.2))
+                            .foregroundColor(stateColor(for: state))
+                            .cornerRadius(8)
                         }
                     }
                     .padding()
-                }
+                    .frame(maxWidth: .infinity)
+                    .background(Color.blue.opacity(0.1))
 
-                // Error message
-                if let error = submitError {
-                    VStack(spacing: 8) {
-                        HStack {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .foregroundColor(.red)
-                            Text(error)
-                                .font(.subheadline)
-                                .foregroundColor(.red)
+                    Divider()
+
+                    // Exercises and answers
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            ForEach(Array(exercisesWithAnswers.enumerated()), id: \.offset) { index, item in
+                                ExerciseSubmissionCard(
+                                    exerciseNumber: item.exercise.exerciseNumber,
+                                    fullContent: item.exercise.fullContent,
+                                    answerData: item.answer,
+                                    subject: item.exercise.subject,
+                                    imageData: assignment.imageData,
+                                    startY: item.exercise.startY,
+                                    endY: item.exercise.endY
+                                )
+                            }
+
+                            if !hasAnyAnswers {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(.orange)
+                                    Text("No Answers Found")
+                                        .font(.headline)
+                                    Text("You haven't answered any exercises yet.")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
                         }
                         .padding()
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(8)
-                        .padding(.horizontal)
                     }
-                }
 
-                // Turn in button
-                Button(action: turnInHomework) {
-                    HStack {
-                        if isSubmitting {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(0.8)
-                            Text("Turning In...")
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                            Text("Turn In")
+                    // Error message
+                    if let error = submitError {
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundColor(.red)
+                                Text(error)
+                                    .font(.subheadline)
+                                    .foregroundColor(.red)
+                            }
+                            .padding()
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(8)
+                            .padding(.horizontal)
                         }
                     }
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(hasAnyAnswers ? LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing) : LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing))
-                    .cornerRadius(12)
-                }
-                .buttonStyle(.plain)
-                .disabled(isSubmitting || !hasAnyAnswers)
-                .padding()
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
+
+                    // Turn in button
+                    Button(action: turnInHomework) {
+                        HStack {
+                            if isSubmitting {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.8)
+                                Text("Turning In...")
+                            } else {
+                                Image(systemName: "paperplane.fill")
+                                Text("Turn In")
+                            }
+                        }
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(hasAnyAnswers ? LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing) : LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing))
+                        .cornerRadius(12)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(isSubmitting || !hasAnyAnswers)
+                    .padding()
                 }
+                .frame(width: a4Width(for: geometry.size.height), height: geometry.size.height)
+                .background(Color.white)
+                .shadow(color: Color.black.opacity(0.5), radius: 30, x: 0, y: 10)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             }
-            .onAppear {
-                loadSubmissionState()
-            }
+        }
+        .ignoresSafeArea()
+        .onAppear {
+            loadSubmissionState()
         }
         .alert("Success!", isPresented: $showSuccessAlert) {
             Button("OK") {
-                dismiss()
+                dismissView()
             }
         } message: {
             Text("Your homework has been turned in successfully!")
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Calculate A4 width based on available height (A4 ratio is 1:1.414)
+    private func a4Width(for height: CGFloat) -> CGFloat {
+        let a4Ratio: CGFloat = 1.0 / 1.414  // Width to height ratio for A4
+        return (height * 0.95) * a4Ratio
+    }
+
+    /// Dismiss the view
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
         }
     }
 
@@ -286,6 +325,24 @@ private struct ExerciseSubmissionCard: View {
         return fullImage.crop(startY: startY, endY: endY, padding: 0.03)
     }
 
+    /// Render the full canvas image with background, not cropped to drawing bounds
+    private func renderFullCanvasImage(drawing: PKDrawing, canvasSize: CGSize, isMath: Bool) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: canvasSize)
+        return renderer.image { context in
+            // Draw background
+            if isMath {
+                UIColor(red: 1.0, green: 0.98, blue: 0.94, alpha: 1.0).setFill()
+            } else {
+                UIColor.white.setFill()
+            }
+            context.fill(CGRect(origin: .zero, size: canvasSize))
+
+            // Draw the full canvas drawing
+            let drawingRect = CGRect(origin: .zero, size: canvasSize)
+            drawing.image(from: drawingRect, scale: 1.0).draw(in: drawingRect)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Exercise header
@@ -330,14 +387,17 @@ private struct ExerciseSubmissionCard: View {
 
                 if let answerData = answerData,
                    let drawing = try? PKDrawing(data: answerData) {
-                    // Display canvas drawing
+                    // Display full canvas drawing (not cropped to bounds)
                     let isMath = subject == "mathematics"
-                    Image(uiImage: drawing.image(from: drawing.bounds, scale: 2.0))
+
+                    // Use a fixed canvas size for consistent display
+                    let canvasSize = CGSize(width: 800, height: 400)
+                    let drawingImage = renderFullCanvasImage(drawing: drawing, canvasSize: canvasSize, isMath: isMath)
+
+                    Image(uiImage: drawingImage)
                         .resizable()
-                        .scaledToFit()
+                        .aspectRatio(canvasSize.width / canvasSize.height, contentMode: .fit)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: 150)
-                        .background(isMath ? Color(red: 1.0, green: 0.98, blue: 0.94) : Color.white)
                         .cornerRadius(8)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)

@@ -237,29 +237,26 @@ class PDFGenerationService {
         // Draw answer
         if let answerData = answerData,
            let drawing = try? PKDrawing(data: answerData) {
-            // Convert drawing to image
-            let drawingBounds = drawing.bounds.isEmpty ? CGRect(x: 0, y: 0, width: width, height: 200) : drawing.bounds
-            let answerImage = drawing.image(from: drawingBounds, scale: 2.0)
+            // Use full canvas size (800x400) to match the canvas view
+            let canvasSize = CGSize(width: 800, height: 400)
+            let canvasAspectRatio = canvasSize.width / canvasSize.height
 
-            let answerHeight: CGFloat = 200
+            // Calculate display dimensions
+            let contentWidth = width - 20
+            let answerHeight = contentWidth / canvasAspectRatio
             let answerWidth = width
 
             // Check if we need a new page for the answer
-            if currentY + answerHeight > pageHeight - 40 {
+            if currentY + answerHeight + 20 > pageHeight - 40 {
                 pdfContext.beginPage()
                 currentY = 40
             }
 
-            let answerRect = CGRect(x: x, y: currentY, width: answerWidth, height: answerHeight)
-
-            // Draw background based on subject
+            // Render full canvas with background
             let isMath = subject == "mathematics"
-            if isMath {
-                context.cgContext.setFillColor(UIColor(red: 1.0, green: 0.98, blue: 0.94, alpha: 1.0).cgColor)
-            } else {
-                context.cgContext.setFillColor(UIColor.white.cgColor)
-            }
-            context.cgContext.fill(answerRect)
+            let answerImage = renderFullCanvasImage(drawing: drawing, canvasSize: canvasSize, isMath: isMath)
+
+            let answerRect = CGRect(x: x, y: currentY, width: answerWidth, height: answerHeight)
 
             // Draw border
             context.cgContext.setStrokeColor(UIColor.lightGray.cgColor)
@@ -267,16 +264,7 @@ class PDFGenerationService {
             context.cgContext.stroke(answerRect)
 
             // Draw answer image
-            let aspectWidth = answerWidth - 20
-            let aspectHeight = (answerImage.size.height / answerImage.size.width) * aspectWidth
-            let finalHeight = min(aspectHeight, answerHeight - 20)
-            let imageDrawRect = CGRect(
-                x: x + 10,
-                y: currentY + 10,
-                width: aspectWidth,
-                height: finalHeight
-            )
-            answerImage.draw(in: imageDrawRect)
+            answerImage.draw(in: answerRect)
 
             currentY += answerHeight + 10
         } else {
@@ -299,6 +287,24 @@ class PDFGenerationService {
         currentY += 5
 
         return currentY
+    }
+
+    /// Render the full canvas image with background, not cropped to drawing bounds
+    private func renderFullCanvasImage(drawing: PKDrawing, canvasSize: CGSize, isMath: Bool) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: canvasSize)
+        return renderer.image { context in
+            // Draw background
+            if isMath {
+                UIColor(red: 1.0, green: 0.98, blue: 0.94, alpha: 1.0).setFill()
+            } else {
+                UIColor.white.setFill()
+            }
+            context.fill(CGRect(origin: .zero, size: canvasSize))
+
+            // Draw the full canvas drawing
+            let drawingRect = CGRect(origin: .zero, size: canvasSize)
+            drawing.image(from: drawingRect, scale: 1.0).draw(in: drawingRect)
+        }
     }
 }
 

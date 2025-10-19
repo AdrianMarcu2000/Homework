@@ -322,8 +322,12 @@ struct AssignmentDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showSubmissionView) {
-            HomeworkSubmissionView(assignment: assignment)
+        .overlay {
+            if showSubmissionView {
+                HomeworkSubmissionView(assignment: assignment, onDismiss: {
+                    showSubmissionView = false
+                })
+            }
         }
     }
 

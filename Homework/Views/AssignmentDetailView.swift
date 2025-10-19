@@ -8,6 +8,7 @@
 import SwiftUI
 import CoreData
 import PencilKit
+import OSLog
 
 /// View for displaying and analyzing a Google Classroom assignment
 struct AssignmentDetailView: View {
@@ -335,7 +336,7 @@ struct AssignmentDetailView: View {
                 analyzeAssignment()
             } catch {
                 analysisError = error.localizedDescription
-                print("❌ Failed to download image: \(error)")
+                AppLogger.google.error("Failed to download image", error: error)
             }
         }
     }
@@ -369,7 +370,7 @@ struct AssignmentDetailView: View {
                 DispatchQueue.main.async {
                     isAnalyzing = false
                     analysisError = error.localizedDescription
-                    print("❌ OCR failed: \(error)")
+                    AppLogger.ocr.error("OCR failed", error: error)
                 }
             }
         }
@@ -397,7 +398,7 @@ struct AssignmentDetailView: View {
 
                 case .failure(let error):
                     analysisError = error.localizedDescription
-                    print("❌ Analysis failed: \(error)")
+                    AppLogger.ai.error("Analysis failed", error: error)
                 }
             }
         }
@@ -416,40 +417,24 @@ struct AssignmentDetailView: View {
 
                 case .failure(let error):
                     analysisError = error.localizedDescription
-                    print("❌ Cloud analysis failed: \(error)")
+                    AppLogger.cloud.error("Cloud analysis failed", error: error)
                 }
             }
         }
     }
 
     private func saveAnalysisResult(_ analysis: AIAnalysisService.AnalysisResult) {
-        // Check if we're overwriting existing analysis
-        if let oldAnalysis = assignment.analysisResult {
-            print("DEBUG SAVE: ⚠️ OVERWRITING existing classroom assignment analysis")
-            print("DEBUG SAVE: Previous analysis had \(oldAnalysis.exercises.count) exercises")
-        } else {
-            print("DEBUG SAVE: Creating new analysis for classroom assignment")
-        }
-
         do {
-            print("DEBUG SAVE: Saving analysis - Exercises: \(analysis.exercises.count)")
-            print("DEBUG SAVE: Exercise order before encoding:")
-            for (idx, ex) in analysis.exercises.enumerated() {
-                print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
-                print("     Content preview: \(ex.fullContent.prefix(80))...")
-            }
-
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let jsonData = try encoder.encode(analysis)
             if let jsonString = String(data: jsonData, encoding: .utf8) {
-                // Explicitly overwrite analysisJSON field
                 assignment.analysisJSON = jsonString
                 assignment.saveToCache()
-                print("DEBUG SAVE: ✅ Analysis saved to UserDefaults (overwrites any previous analysis)")
+                AppLogger.persistence.info("Analysis saved to cache - Exercises: \(analysis.exercises.count)")
             }
         } catch {
-            print("❌ Error encoding analysis: \(error)")
+            AppLogger.persistence.error("Error encoding analysis", error: error)
         }
     }
 
@@ -463,7 +448,7 @@ struct AssignmentDetailView: View {
         // Store the original text as extractedText
         assignment.extractedText = text
 
-        print("🔍 Starting AI text analysis...")
+        AppLogger.ai.info("Starting text analysis for assignment")
 
         // Use AI analysis service for text-only homework
         AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
@@ -472,11 +457,11 @@ struct AssignmentDetailView: View {
 
                 switch result {
                 case .success(let analysis):
-                    print("✅ Text analysis complete - Found \(analysis.exercises.count) exercises")
+                    AppLogger.ai.info("Text analysis complete - Found \(analysis.exercises.count) exercises")
                     saveAnalysisResult(analysis)
 
                 case .failure(let error):
-                    print("❌ Text analysis failed: \(error.localizedDescription)")
+                    AppLogger.ai.error("Text analysis failed", error: error)
                     analysisError = error.localizedDescription
                 }
             }

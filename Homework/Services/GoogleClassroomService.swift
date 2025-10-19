@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import OSLog
 
 /// Service for interacting with Google Classroom API
 class GoogleClassroomService {
@@ -35,20 +36,20 @@ class GoogleClassroomService {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        print("📚 Fetching courses from Google Classroom...")
-        print("🔗 Request URL: \(url.absoluteString)")
-        print("🔑 Access Token (first 20 chars): \(accessToken.prefix(20))...")
+        AppLogger.google.info("Fetching courses from Google Classroom...")
+        AppLogger.google.debug("Request URL: \(url.absoluteString)")
+        AppLogger.google.debug("Access Token (first 20 chars): \(accessToken.prefix(20))...")
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
         // Log the HTTP response status
         if let httpResponse = response as? HTTPURLResponse {
-            print("📊 HTTP Status: \(httpResponse.statusCode)")
+            AppLogger.google.debug("HTTP Status: \(httpResponse.statusCode)")
 
             // Check for error status codes
             if httpResponse.statusCode != 200 {
                 if let errorJSON = String(data: data, encoding: .utf8) {
-                    print("❌ Error Response: \(errorJSON)")
+                    AppLogger.google.error("Error Response: \(errorJSON)")
                 }
                 throw ClassroomError.apiError("HTTP \(httpResponse.statusCode): Request failed")
             }
@@ -56,38 +57,38 @@ class GoogleClassroomService {
 
         // Log the raw response for debugging
         if let rawJSON = String(data: data, encoding: .utf8) {
-            print("📄 Raw API Response: \(rawJSON)")
+            AppLogger.google.debug("Raw API Response: \(rawJSON.prefix(500))")
         }
 
         // Try to decode the response
         do {
             let coursesResponse = try JSONDecoder().decode(CoursesResponse.self, from: data)
-            print("✅ Decoded response - found \(coursesResponse.courses?.count ?? 0) courses")
+            AppLogger.google.info("Decoded response - found \(coursesResponse.courses?.count ?? 0) courses")
 
             // Log individual courses if any exist
             if let courses = coursesResponse.courses, !courses.isEmpty {
                 for course in courses {
-                    print("  📖 Course: \(course.name) (ID: \(course.id), State: \(course.courseState))")
+                    AppLogger.google.debug("Course: \(course.name) (ID: \(course.id), State: \(course.courseState))")
                 }
             } else {
-                print("⚠️ No courses found in response - user may not be enrolled in any courses")
+                AppLogger.google.info("No courses found in response - user may not be enrolled in any courses")
             }
 
             return coursesResponse.courses ?? []
         } catch {
-            print("❌ JSON Decoding Error: \(error)")
+            AppLogger.google.error("JSON Decoding Error", error: error)
             if let decodingError = error as? DecodingError {
                 switch decodingError {
                 case .keyNotFound(let key, let context):
-                    print("   Missing key: \(key.stringValue) - \(context.debugDescription)")
+                    AppLogger.google.error("   Missing key: \(key.stringValue) - \(context.debugDescription)")
                 case .typeMismatch(let type, let context):
-                    print("   Type mismatch for type \(type) - \(context.debugDescription)")
+                    AppLogger.google.error("   Type mismatch for type \(type) - \(context.debugDescription)")
                 case .valueNotFound(let type, let context):
-                    print("   Value not found for type \(type) - \(context.debugDescription)")
+                    AppLogger.google.error("   Value not found for type \(type) - \(context.debugDescription)")
                 case .dataCorrupted(let context):
-                    print("   Data corrupted: \(context.debugDescription)")
+                    AppLogger.google.error("   Data corrupted: \(context.debugDescription)")
                 @unknown default:
-                    print("   Unknown decoding error")
+                    AppLogger.google.error("   Unknown decoding error")
                 }
             }
             throw error
@@ -115,45 +116,45 @@ class GoogleClassroomService {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        print("📝 Fetching coursework for course: \(courseId)...")
-        print("🔗 Request URL: \(url.absoluteString)")
+        AppLogger.google.info("Fetching coursework for course: \(courseId)...")
+        AppLogger.google.debug("Request URL: \(url.absoluteString)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
         // Log the HTTP response status
         if let httpResponse = response as? HTTPURLResponse {
-            print("📊 HTTP Status: \(httpResponse.statusCode)")
+            AppLogger.google.debug("HTTP Status: \(httpResponse.statusCode)")
 
             // Check for error status codes
             if httpResponse.statusCode != 200 {
                 if let errorJSON = String(data: data, encoding: .utf8) {
-                    print("❌ Error Response: \(errorJSON)")
+                    AppLogger.google.error("Error Response: \(errorJSON)")
                 }
             }
         }
 
         // Log the raw response for debugging
         if let rawJSON = String(data: data, encoding: .utf8) {
-            print("📄 Raw API Response: \(rawJSON)")
+            AppLogger.google.debug("Raw API Response: \(rawJSON.prefix(500))")
         }
 
         // Try to decode the response
         do {
             let courseworkResponse = try JSONDecoder().decode(CourseworkResponse.self, from: data)
-            print("✅ Fetched \(courseworkResponse.courseWork?.count ?? 0) assignments")
+            AppLogger.google.info("Fetched \(courseworkResponse.courseWork?.count ?? 0) assignments")
 
             // Log individual assignments if any exist
             if let assignments = courseworkResponse.courseWork, !assignments.isEmpty {
                 for assignment in assignments {
-                    print("  📝 Assignment: \(assignment.title) (ID: \(assignment.id), State: \(assignment.state))")
+                    AppLogger.google.debug("Assignment: \(assignment.title) (ID: \(assignment.id), State: \(assignment.state))")
                 }
             } else {
-                print("⚠️ No assignments found in response")
+                AppLogger.google.info("No assignments found in response")
             }
 
             return courseworkResponse.courseWork ?? []
         } catch {
-            print("❌ JSON Decoding Error: \(error)")
+            AppLogger.google.error("JSON Decoding Error", error: error)
             throw error
         }
     }
@@ -169,11 +170,11 @@ class GoogleClassroomService {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        print("📥 Downloading file from Google Drive: \(fileId)...")
+        AppLogger.google.info("Downloading file from Google Drive: \(fileId)...")
 
         let (data, _) = try await URLSession.shared.data(for: request)
 
-        print("✅ Downloaded \(data.count) bytes")
+        AppLogger.google.info("Downloaded \(data.count) bytes")
 
         return data
     }
@@ -241,7 +242,7 @@ class GoogleClassroomService {
             accessToken: accessToken
         )
 
-        print("✅ Assignment turned in successfully")
+        AppLogger.google.info("Assignment turned in successfully")
         return driveFileId
     }
 
@@ -257,17 +258,17 @@ class GoogleClassroomService {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        print("📝 Fetching student submission...")
-        print("🔗 URL: \(url.absoluteString)")
+        AppLogger.google.info("Fetching student submission...")
+        AppLogger.google.debug("URL: \(url.absoluteString)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
         if let httpResponse = response as? HTTPURLResponse {
-            print("📊 HTTP Status: \(httpResponse.statusCode)")
+            AppLogger.google.debug("HTTP Status: \(httpResponse.statusCode)")
         }
 
         if let rawJSON = String(data: data, encoding: .utf8) {
-            print("📄 Submission Response: \(rawJSON)")
+            AppLogger.google.debug("Submission Response: \(rawJSON.prefix(500))")
         }
 
         do {
@@ -278,10 +279,10 @@ class GoogleClassroomService {
                 throw ClassroomError.apiError("No submission found for this assignment")
             }
 
-            print("✅ Found submission - ID: \(submission.id), State: \(submission.state)")
+            AppLogger.google.info("Found submission - ID: \(submission.id), State: \(submission.state)")
             return (id: submission.id, state: submission.state)
         } catch {
-            print("❌ Failed to decode submission response: \(error)")
+            AppLogger.google.error("Failed to decode submission response", error: error)
             throw error
         }
     }
@@ -326,17 +327,17 @@ class GoogleClassroomService {
 
         request.httpBody = body
 
-        print("📤 Uploading PDF to Google Drive (\(pdfData.count) bytes)...")
+        AppLogger.google.info("Uploading PDF to Google Drive (\(pdfData.count) bytes)...")
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
         if let httpResponse = response as? HTTPURLResponse {
-            print("📊 HTTP Status: \(httpResponse.statusCode)")
+            AppLogger.google.debug("HTTP Status: \(httpResponse.statusCode)")
 
             // Check for error status codes
             if httpResponse.statusCode != 200 {
                 if let rawJSON = String(data: data, encoding: .utf8) {
-                    print("❌ Drive Upload Error Response: \(rawJSON)")
+                    AppLogger.google.error("Drive Upload Error Response: \(rawJSON)")
                 }
 
                 // Try to extract error message from Google API error response
@@ -351,15 +352,15 @@ class GoogleClassroomService {
         }
 
         if let rawJSON = String(data: data, encoding: .utf8) {
-            print("📄 Drive Upload Response: \(rawJSON)")
+            AppLogger.google.debug("Drive Upload Response: \(rawJSON.prefix(500))")
         }
 
         do {
             let uploadResponse = try JSONDecoder().decode(DriveUploadResponse.self, from: data)
-            print("✅ PDF uploaded - Drive File ID: \(uploadResponse.id)")
+            AppLogger.google.info("PDF uploaded - Drive File ID: \(uploadResponse.id)")
             return uploadResponse.id
         } catch {
-            print("❌ Failed to decode Drive upload response: \(error)")
+            AppLogger.google.error("Failed to decode Drive upload response", error: error)
             throw error
         }
     }

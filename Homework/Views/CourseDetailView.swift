@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import OSLog
 
 /// View showing assignments (coursework) for a specific Google Classroom course
 struct CourseDetailView: View {
@@ -117,7 +118,7 @@ struct CourseDetailView: View {
             } catch {
                 errorMessage = error.localizedDescription
                 isLoading = false
-                print("❌ Failed to load coursework: \(error)")
+                AppLogger.google.error("Failed to load coursework", error: error)
             }
         }
     }

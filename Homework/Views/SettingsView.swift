@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import OSLog
 
 /// Settings view for app preferences and security
 struct SettingsView: View {
@@ -46,6 +47,9 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Require Authentication", isOn: $requireAuthentication)
+                        .onChange(of: requireAuthentication) { _, newValue in
+                            AppLogger.ui.info("User \(newValue ? "enabled" : "disabled") authentication requirement")
+                        }
 
                     Button(action: lockApp) {
                         HStack {
@@ -105,8 +109,12 @@ struct SettingsView: View {
                         }
 
                         Toggle("Use cloud analysis", isOn: $useCloudAnalysis)
+                            .onChange(of: useCloudAnalysis) { _, newValue in
+                                AppLogger.ui.info("User \(newValue ? "enabled" : "disabled") cloud analysis")
+                            }
                     } else {
                         Button(action: {
+                            AppLogger.ui.info("User opened subscription view")
                             showingSubscription = true
                         }) {
                             HStack {
@@ -194,6 +202,7 @@ struct SettingsView: View {
     }
 
     private func lockApp() {
+        AppLogger.ui.info("User manually locked the app")
         authService.lock()
     }
 }

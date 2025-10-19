@@ -9,6 +9,7 @@ import SwiftUI
 import CoreData
 import FirebaseCore
 import FirebaseAppCheck
+import OSLog
 
 @main
 struct HomeworkApp: App {
@@ -23,7 +24,7 @@ struct HomeworkApp: App {
         // Configure App Check for security
         AppCheckConfiguration.configure()
 
-        print("🔥 Firebase and App Check initialized")
+        AppLogger.lifecycle.info("Firebase and App Check initialized")
     }
 
     var body: some Scene {

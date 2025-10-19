@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CoreData
+import OSLog
 
 /// A view that displays a list of homework items with editing capabilities.
 ///
@@ -110,8 +111,10 @@ struct HomeworkListView: View {
                     withAnimation {
                         if editMode?.wrappedValue == .active {
                             editMode?.wrappedValue = .inactive
+                            AppLogger.ui.info("User exited edit mode")
                         } else {
                             editMode?.wrappedValue = .active
+                            AppLogger.ui.info("User entered edit mode")
                         }
                     }
                 }) {
@@ -167,6 +170,8 @@ struct HomeworkListView: View {
             guard let sectionItems = groupedItems[subject] else { return }
             let itemsToDelete = offsets.map { sectionItems[$0] }
 
+            AppLogger.ui.info("User deleted \(itemsToDelete.count) homework item(s) from \(subject)")
+
             // Check if currently selected item is being deleted
             if let selected = selectedItem, itemsToDelete.contains(selected) {
                 selectedItem = nil
@@ -176,9 +181,12 @@ struct HomeworkListView: View {
 
             do {
                 try viewContext.save()
+                AppLogger.persistence.info("Deleted items saved to Core Data")
             } catch {
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+                AppLogger.persistence.error("Failed to delete homework items", error: error)
+                // In production, you might want to show an alert to the user instead of crashing
+                // For now, roll back the delete operation
+                viewContext.rollback()
             }
         }
     }
@@ -407,6 +415,7 @@ struct HomeworkDetailView: View {
 
                                 HStack(spacing: 16) {
                                     Button(action: {
+                                        AppLogger.ui.info("User triggered Apple AI analysis")
                                         viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
                                     }) {
                                         VStack(spacing: 8) {
@@ -423,6 +432,7 @@ struct HomeworkDetailView: View {
                                     }
 
                                     Button(action: {
+                                        AppLogger.ui.info("User triggered Cloud AI reanalysis")
                                         viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
                                     }) {
                                         VStack(spacing: 8) {
@@ -477,6 +487,7 @@ struct HomeworkDetailView: View {
                 HStack(spacing: 12) {
                     // Local reanalyze button
                     Button(action: {
+                        AppLogger.ui.info("User triggered local AI reanalysis from toolbar")
                         isReanalyzing = true
                         viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
                     }) {
@@ -488,6 +499,7 @@ struct HomeworkDetailView: View {
                     // Cloud reanalyze button (only show if enabled in settings)
                     if useCloudAnalysis {
                         Button(action: {
+                            AppLogger.ui.info("User triggered cloud AI reanalysis from toolbar")
                             isReanalyzing = true
                             viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
                         }) {
@@ -505,14 +517,14 @@ struct HomeworkDetailView: View {
 
     /// Analyze text-only homework using AI (no image available)
     private func analyzeTextOnly(text: String) {
-        print("🔍 Starting AI text analysis for local homework...")
+        AppLogger.ai.info("Starting text-only AI analysis for local homework")
 
         // Use AI analysis service for text-only homework
         AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let analysis):
-                    print("✅ Text analysis complete - Found \(analysis.exercises.count) exercises")
+                    AppLogger.ai.info("Text analysis complete with \(analysis.exercises.count) exercises")
 
                     // Save the analysis
                     do {
@@ -522,14 +534,14 @@ struct HomeworkDetailView: View {
                         if let jsonString = String(data: jsonData, encoding: .utf8) {
                             self.item.analysisJSON = jsonString
                             try self.viewContext.save()
-                            print("✅ Text-only analysis saved to Core Data")
+                            AppLogger.persistence.info("Text-only analysis saved to Core Data")
                         }
                     } catch {
-                        print("❌ Error saving text-only analysis: \(error)")
+                        AppLogger.persistence.error("Failed to save text-only analysis", error: error)
                     }
 
                 case .failure(let error):
-                    print("❌ Text analysis failed: \(error.localizedDescription)")
+                    AppLogger.ai.error("Text analysis failed", error: error)
                 }
             }
         }

@@ -8,6 +8,7 @@
 import SwiftUI
 import CoreData
 import Combine
+import OSLog
 
 /// View model that manages the state and business logic for capturing and processing homework images.
 ///
@@ -101,18 +102,21 @@ class HomeworkCaptureViewModel: ObservableObject {
 
     /// Selects the camera as the image source and presents the image picker.
     func selectCamera() {
+        AppLogger.ui.info("User selected camera for homework capture")
         imageSourceType = .camera
         showImagePicker = true
     }
 
     /// Selects the photo library as the image source and presents the image picker.
     func selectPhotoLibrary() {
+        AppLogger.ui.info("User selected photo library for homework capture")
         imageSourceType = .photoLibrary
         showImagePicker = true
     }
 
     /// Presents the document picker to allow users to select image files from the Files app.
     func selectDocumentPicker() {
+        AppLogger.ui.info("User opened document picker for homework selection")
         showDocumentPicker = true
     }
 
@@ -168,9 +172,9 @@ class HomeworkCaptureViewModel: ObservableObject {
                                 newItem.analysisJSON = jsonString
                             }
                             try self.initialContext.save()
-                            print("✅ OCR-only processing complete (created single exercise)")
+                            AppLogger.ocr.info("OCR-only processing complete, created single exercise")
                         } catch {
-                            print("Error saving context after OCR: \(error)")
+                            AppLogger.persistence.error("Failed to save context after OCR", error: error)
                         }
                     }
                     return
@@ -196,16 +200,19 @@ class HomeworkCaptureViewModel: ObservableObject {
                             // Set the analysis method based on which service was used
                             newItem.analysisMethod = useCloud ? AnalysisMethod.cloudAI.rawValue : AnalysisMethod.appleAI.rawValue
                         } catch {
+                            AppLogger.ai.error("Failed to encode analysis result", error: error)
                             newItem.analysisJSON = "failed"
                         }
-                    case .failure:
+                    case .failure(let error):
+                        AppLogger.ai.error("AI analysis failed", error: error)
                         newItem.analysisJSON = "failed"
                     }
 
                     do {
                         try self.initialContext.save()
+                        AppLogger.persistence.info("Homework item saved after analysis")
                     } catch {
-                        print("Error saving context after analysis: \(error)")
+                        AppLogger.persistence.error("Failed to save context after analysis", error: error)
                     }
 
                     if case .success(let analysis) = analysisResult {
@@ -220,20 +227,22 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                                 do {
                                     try self.initialContext.save()
+                                    AppLogger.persistence.info("Summary saved to homework item")
                                 } catch {
-                                    print("Error saving context after summary generation: \(error)")
+                                    AppLogger.persistence.error("Failed to save context after summary generation", error: error)
                                 }
                             }
                         }
                     }
                 }
             } catch {
+                await AppLogger.ocr.error("OCR processing failed", error: error)
                 await MainActor.run {
                     newItem.analysisJSON = "failed"
                     do {
                         try self.initialContext.save()
                     } catch {
-                        print("Error saving context after OCR failure: \(error)")
+                        AppLogger.persistence.error("Failed to save context after OCR failure", error: error)
                     }
                 }
             }
@@ -268,7 +277,7 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                 switch result {
                 case .success(let analysis):
-                    print("DEBUG VM: Received analysis - Exercises: \(analysis.exercises.count)")
+                    AppLogger.ai.info("Received analysis with \(analysis.exercises.count) exercises")
                     self.analysisResult = analysis
 
                     // Generate a summary of the homework instead of showing raw OCR text
@@ -279,10 +288,9 @@ class HomeworkCaptureViewModel: ObservableObject {
                             switch summaryResult {
                             case .success(let summary):
                                 self.extractedText = summary
-                                print("DEBUG VM: Generated summary: \(summary)")
 
                             case .failure(let error):
-                                print("DEBUG VM: Summary generation failed - \(error.localizedDescription)")
+                                AppLogger.ai.error("Summary generation failed", error: error)
                                 // Fallback to a basic summary
                                 self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
                             }
@@ -290,7 +298,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                     }
 
                 case .failure(let error):
-                    print("DEBUG VM: Analysis failed - \(error.localizedDescription)")
+                    AppLogger.ai.error("AI analysis failed", error: error)
                     self.isProcessingOCR = false
                     // Continue with just OCR text if AI analysis fails
                     break
@@ -311,10 +319,7 @@ class HomeworkCaptureViewModel: ObservableObject {
             // Check if we're re-analyzing an existing item
             if let existingItem = reanalyzingItem {
                 item = existingItem
-                print("DEBUG SAVE: ⚠️ OVERWRITING existing item analysis")
-                if let oldAnalysis = item.analysisResult {
-                    print("DEBUG SAVE: Previous analysis had \(oldAnalysis.exercises.count) exercises")
-                }
+                AppLogger.persistence.info("Overwriting existing item analysis")
             } else {
                 item = Item(context: context)
                 item.timestamp = Date()
@@ -324,7 +329,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                    let imageData = image.jpegData(compressionQuality: 0.8) {
                     item.imageData = imageData
                 }
-                print("DEBUG SAVE: Creating new item")
+                AppLogger.persistence.info("Creating new homework item")
             }
 
             // Update extracted text (summary)
@@ -332,12 +337,7 @@ class HomeworkCaptureViewModel: ObservableObject {
 
             // Save AI analysis result as JSON
             if let analysis = analysisResult {
-                print("DEBUG SAVE: Saving analysis - Exercises: \(analysis.exercises.count)")
-                print("DEBUG SAVE: Exercise order before encoding:")
-                for (idx, ex) in analysis.exercises.enumerated() {
-                    print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
-                    print("     Content preview: \(ex.fullContent.prefix(80))...")
-                }
+                AppLogger.persistence.info("Saving analysis with \(analysis.exercises.count) exercises")
                 do {
                     let encoder = JSONEncoder()
                     encoder.outputFormatting = .prettyPrinted
@@ -347,22 +347,19 @@ class HomeworkCaptureViewModel: ObservableObject {
                         item.analysisJSON = jsonString
                         // Set analysis method based on whether cloud was used
                         item.analysisMethod = isCloudAnalysisInProgress ? AnalysisMethod.cloudAI.rawValue : AnalysisMethod.appleAI.rawValue
-                        print("DEBUG SAVE: ✅ Analysis JSON saved successfully (overwrites any previous analysis)")
+                        AppLogger.persistence.info("Analysis JSON saved successfully")
                     }
                 } catch {
-                    print("❌ Error encoding analysis result: \(error)")
+                    AppLogger.persistence.error("Failed to encode analysis result", error: error)
                 }
-            } else {
-                print("DEBUG SAVE: No analysis result to save")
             }
 
             do {
                 try context.save()
-                print("DEBUG SAVE: ✅ Core Data save successful")
+                AppLogger.persistence.info("Core Data save successful")
                 dismissTextSheet()
             } catch {
-                let nsError = error as NSError
-                print("❌ Error saving homework: \(nsError), \(nsError.userInfo)")
+                AppLogger.persistence.error("Failed to save homework", error: error)
             }
         }
     }
@@ -388,7 +385,7 @@ class HomeworkCaptureViewModel: ObservableObject {
         // Load image from item
         guard let imageData = item.imageData,
               let image = UIImage(data: imageData) else {
-            print("DEBUG REANALYZE: No image data found in item")
+            AppLogger.ui.error("No image data found in item for reanalysis", error: NSError(domain: "HomeworkCapture", code: -1))
             return
         }
 
@@ -402,7 +399,7 @@ class HomeworkCaptureViewModel: ObservableObject {
         currentImage = image
         isCloudAnalysisInProgress = useCloud
 
-        print("DEBUG REANALYZE: Starting re-analysis for item with timestamp: \(item.timestamp?.description ?? "none")")
+        AppLogger.ui.info("Starting homework reanalysis with \(useCloud ? "cloud" : "local") AI")
 
         // Check if AI analysis is available
         let shouldUseAI = AIAnalysisService.shared.isModelAvailable || useCloudAnalysis
@@ -415,7 +412,7 @@ class HomeworkCaptureViewModel: ObservableObject {
             case .success(let ocrResult):
                 DispatchQueue.main.async {
                     self.ocrBlocks = ocrResult.blocks
-                    print("DEBUG REANALYZE: OCR completed with \(ocrResult.blocks.count) blocks")
+                    AppLogger.ocr.info("OCR completed with \(ocrResult.blocks.count) blocks for reanalysis")
                 }
 
                 // If no AI available, create single exercise from OCR text
@@ -449,9 +446,9 @@ class HomeworkCaptureViewModel: ObservableObject {
                                 item.analysisJSON = jsonString
                             }
                             try context.save()
-                            print("✅ OCR-only reanalysis complete (created single exercise)")
+                            AppLogger.ocr.info("OCR-only reanalysis complete, created single exercise")
                         } catch {
-                            print("❌ Error saving OCR-only reanalysis: \(error)")
+                            AppLogger.persistence.error("Failed to save OCR-only reanalysis", error: error)
                         }
 
                         self.reanalyzingItem = nil
@@ -469,7 +466,7 @@ class HomeworkCaptureViewModel: ObservableObject {
             case .failure(let error):
                 DispatchQueue.main.async {
                     self.isProcessingOCR = false
-                    print("DEBUG REANALYZE: OCR Error: \(error.localizedDescription)")
+                    AppLogger.ocr.error("OCR failed during reanalysis", error: error)
                 }
             }
         }
@@ -499,7 +496,7 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                 switch result {
                 case .success(let analysis):
-                    print("DEBUG REANALYZE: Received analysis - Exercises: \(analysis.exercises.count)")
+                    AppLogger.ai.info("Received reanalysis with \(analysis.exercises.count) exercises")
                     self.analysisResult = analysis
 
                     // Save analysis immediately
@@ -510,10 +507,10 @@ class HomeworkCaptureViewModel: ObservableObject {
                         if let jsonString = String(data: jsonData, encoding: .utf8) {
                             item.analysisJSON = jsonString
                             item.analysisMethod = AnalysisMethod.appleAI.rawValue
-                            print("DEBUG REANALYZE: ✅ Analysis JSON saved to item")
+                            AppLogger.persistence.info("Analysis JSON saved to item")
                         }
                     } catch {
-                        print("❌ Error encoding reanalysis result: \(error)")
+                        AppLogger.persistence.error("Failed to encode reanalysis result", error: error)
                     }
 
                     // Generate a summary of the homework
@@ -524,10 +521,9 @@ class HomeworkCaptureViewModel: ObservableObject {
                             switch summaryResult {
                             case .success(let summary):
                                 item.extractedText = summary
-                                print("DEBUG REANALYZE: Generated summary: \(summary)")
 
                             case .failure(let error):
-                                print("DEBUG REANALYZE: Summary generation failed - \(error.localizedDescription)")
+                                AppLogger.ai.error("Summary generation failed during reanalysis", error: error)
                                 // Fallback to a basic summary
                                 item.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
                             }
@@ -537,9 +533,9 @@ class HomeworkCaptureViewModel: ObservableObject {
                                 try context.save()
                                 // Force Core Data to refresh the object
                                 context.refresh(item, mergeChanges: true)
-                                print("DEBUG REANALYZE: ✅ Core Data saved and refreshed")
+                                AppLogger.persistence.info("Core Data saved and refreshed after reanalysis")
                             } catch {
-                                print("❌ Error saving reanalysis: \(error)")
+                                AppLogger.persistence.error("Failed to save reanalysis", error: error)
                             }
 
                             self.reanalyzingItem = nil
@@ -547,7 +543,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                     }
 
                 case .failure(let error):
-                    print("DEBUG REANALYZE: Analysis failed - \(error.localizedDescription)")
+                    AppLogger.ai.error("Reanalysis failed", error: error)
                     self.isProcessingOCR = false
                 }
             }
@@ -565,7 +561,7 @@ class HomeworkCaptureViewModel: ObservableObject {
             AIAnalysisService.OCRBlock(text: block.text, y: block.y)
         }
 
-        print("DEBUG REANALYZE CLOUD: Starting cloud analysis with \(aiBlocks.count) OCR blocks")
+        AppLogger.cloud.info("Starting cloud reanalysis with \(aiBlocks.count) OCR blocks")
 
         CloudAnalysisService.shared.analyzeHomework(
             image: image,
@@ -578,7 +574,7 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                 switch result {
                 case .success(let analysis):
-                    print("DEBUG REANALYZE CLOUD: Cloud analysis successful - Exercises: \(analysis.exercises.count)")
+                    AppLogger.cloud.info("Cloud reanalysis successful with \(analysis.exercises.count) exercises")
                     self.analysisResult = analysis
 
                     // Save analysis immediately
@@ -589,10 +585,10 @@ class HomeworkCaptureViewModel: ObservableObject {
                         if let jsonString = String(data: jsonData, encoding: .utf8) {
                             item.analysisJSON = jsonString
                             item.analysisMethod = AnalysisMethod.cloudAI.rawValue
-                            print("DEBUG REANALYZE CLOUD: ✅ Analysis JSON saved to item")
+                            AppLogger.persistence.info("Cloud analysis JSON saved to item")
                         }
                     } catch {
-                        print("❌ Error encoding reanalysis result: \(error)")
+                        AppLogger.persistence.error("Failed to encode cloud reanalysis result", error: error)
                     }
 
                     // Generate a summary for cloud analysis results
@@ -603,10 +599,9 @@ class HomeworkCaptureViewModel: ObservableObject {
                             switch summaryResult {
                             case .success(let summary):
                                 item.extractedText = summary
-                                print("DEBUG REANALYZE CLOUD: Generated summary: \(summary)")
 
                             case .failure(let error):
-                                print("DEBUG REANALYZE CLOUD: Summary generation failed - \(error.localizedDescription)")
+                                AppLogger.ai.error("Summary generation failed for cloud reanalysis", error: error)
                                 // Fallback to a basic summary
                                 item.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
                             }
@@ -616,9 +611,9 @@ class HomeworkCaptureViewModel: ObservableObject {
                                 try context.save()
                                 // Force Core Data to refresh the object
                                 context.refresh(item, mergeChanges: true)
-                                print("DEBUG REANALYZE CLOUD: ✅ Core Data saved and refreshed")
+                                AppLogger.persistence.info("Core Data saved and refreshed after cloud reanalysis")
                             } catch {
-                                print("❌ Error saving reanalysis: \(error)")
+                                AppLogger.persistence.error("Failed to save cloud reanalysis", error: error)
                             }
 
                             self.reanalyzingItem = nil
@@ -626,7 +621,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                     }
 
                 case .failure(let error):
-                    print("DEBUG REANALYZE CLOUD: Cloud analysis failed - \(error.localizedDescription)")
+                    AppLogger.cloud.error("Cloud reanalysis failed", error: error)
                     self.isProcessingOCR = false
                 }
             }
@@ -636,7 +631,7 @@ class HomeworkCaptureViewModel: ObservableObject {
     /// Performs cloud-based analysis using Firebase Functions
     func performCloudAnalysis() {
         guard let image = currentImage, !ocrBlocks.isEmpty else {
-            print("DEBUG CLOUD: No image or OCR blocks available for cloud analysis")
+            AppLogger.cloud.error("No image or OCR blocks available for cloud analysis", error: NSError(domain: "HomeworkCapture", code: -1))
             return
         }
 
@@ -649,7 +644,7 @@ class HomeworkCaptureViewModel: ObservableObject {
             AIAnalysisService.OCRBlock(text: block.text, y: block.y)
         }
 
-        print("DEBUG CLOUD: Starting cloud analysis with \(aiBlocks.count) OCR blocks")
+        AppLogger.cloud.info("Starting cloud analysis with \(aiBlocks.count) OCR blocks")
 
         CloudAnalysisService.shared.analyzeHomework(
             image: image,
@@ -662,7 +657,7 @@ class HomeworkCaptureViewModel: ObservableObject {
 
                 switch result {
                 case .success(let analysis):
-                    print("DEBUG CLOUD: Cloud analysis successful - Exercises: \(analysis.exercises.count)")
+                    AppLogger.cloud.info("Cloud analysis successful with \(analysis.exercises.count) exercises")
                     self.analysisResult = analysis
 
                     // Generate a summary for cloud analysis results
@@ -671,10 +666,9 @@ class HomeworkCaptureViewModel: ObservableObject {
                             switch summaryResult {
                             case .success(let summary):
                                 self.extractedText = summary
-                                print("DEBUG CLOUD: Generated summary: \(summary)")
 
                             case .failure(let error):
-                                print("DEBUG CLOUD: Summary generation failed - \(error.localizedDescription)")
+                                AppLogger.ai.error("Summary generation failed for cloud analysis", error: error)
                                 // Fallback to a basic summary
                                 self.extractedText = "Found \(analysis.exercises.count) exercise(s) in this homework."
                             }
@@ -682,8 +676,7 @@ class HomeworkCaptureViewModel: ObservableObject {
                     }
 
                 case .failure(let error):
-                    print("DEBUG CLOUD: Cloud analysis failed - \(error.localizedDescription)")
-                    // Show error to user (you can add an alert here)
+                    AppLogger.cloud.error("Cloud analysis failed", error: error)
                 }
             }
         }

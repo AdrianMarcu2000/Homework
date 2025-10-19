@@ -8,6 +8,7 @@
 import UIKit
 import Vision
 import PDFKit
+import OSLog
 
 /// A service class that provides OCR (Optical Character Recognition) functionality
 /// using Apple's Vision framework to extract text from images and PDFs.
@@ -66,18 +67,22 @@ class OCRService {
     ///   - completion: A completion handler with OCRResult containing text and blocks
     func recognizeTextWithBlocks(from image: UIImage, completion: @escaping (Result<OCRResult, Error>) -> Void) {
         guard let cgImage = image.cgImage else {
+            AppLogger.ocr.error("Invalid image: could not extract CGImage")
             completion(.failure(OCRError.invalidImage))
             return
         }
 
+        AppLogger.ocr.debug("Starting OCR text recognition with blocks")
         let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         let request = VNRecognizeTextRequest { request, error in
             if let error = error {
+                AppLogger.ocr.error("OCR recognition failed", error: error)
                 completion(.failure(error))
                 return
             }
 
             guard let observations = request.results as? [VNRecognizedTextObservation] else {
+                AppLogger.ocr.error("No text observations found in OCR results")
                 completion(.failure(OCRError.noTextFound))
                 return
             }
@@ -101,8 +106,10 @@ class OCRService {
             let fullText = textStrings.joined(separator: "\n")
 
             if fullText.isEmpty {
+                AppLogger.ocr.error("OCR completed but no text was extracted")
                 completion(.failure(OCRError.noTextFound))
             } else {
+                AppLogger.ocr.info("OCR completed successfully: \(blocks.count) blocks, \(fullText.count) characters")
                 let result = OCRResult(fullText: fullText, blocks: blocks)
                 completion(.success(result))
             }
@@ -115,6 +122,7 @@ class OCRService {
             do {
                 try requestHandler.perform([request])
             } catch {
+                AppLogger.ocr.error("Failed to perform OCR request", error: error)
                 completion(.failure(error))
             }
         }
@@ -174,10 +182,12 @@ class OCRService {
     func extractText(from page: PDFPage) async throws -> String {
         // First try direct text extraction (for document-based PDFs)
         if let directText = page.string, !directText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            AppLogger.ocr.debug("Extracted text directly from PDF page (\(directText.count) characters)")
             return directText
         }
 
         // If no direct text available, use OCR on the page image (for image-based PDFs)
+        AppLogger.ocr.info("PDF page has no direct text, using OCR on page image")
         let pageRect = page.bounds(for: .mediaBox)
         let pageImage = page.thumbnail(of: pageRect.size, for: .mediaBox)
 

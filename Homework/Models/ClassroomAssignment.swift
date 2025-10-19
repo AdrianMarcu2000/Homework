@@ -8,6 +8,7 @@
 import Foundation
 import UIKit
 import Combine
+import OSLog
 
 /// A wrapper around ClassroomCoursework that can be analyzed like homework
 class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, Hashable {
@@ -133,7 +134,6 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
         if let json = analysisJSON {
             // Explicitly overwrite existing analysis in UserDefaults
             defaults.set(json, forKey: "\(cacheKey)_analysis")
-            print("DEBUG CACHE: ✅ Analysis JSON written to UserDefaults cache (key: \(cacheKey)_analysis)")
         }
 
         if let answers = exerciseAnswers,

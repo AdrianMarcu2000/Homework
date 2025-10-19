@@ -118,13 +118,6 @@ struct ExerciseCardContent: View {
                 .font(.body)
                 .textSelection(.enabled)
                 .foregroundColor(.primary)
-                .onAppear {
-                    print("🖥️ UI RENDER: Displaying exercise #\(exercise.exerciseNumber)")
-                    print("DEBUG LATEX: \(exercise.fullContent)")
-                    if exercise.fullContent.count > 150 {
-                        print("   (total length: \(exercise.fullContent.count) chars)")
-                    }
-                }
             
             // Hints Section
             HintsSectionView(hints: $hints, revealedHintIndex: $revealedHintIndex, isLoading: $isLoadingHints, errorMessage: $hintsErrorMessage, onGenerate: generateHints)
@@ -238,7 +231,6 @@ struct ExerciseCardContent: View {
         
         // Use cloud service if Apple Intelligence is not available OR if cloud analysis is enabled
         if !isAppleIntelligenceAvailable || useCloudAnalysis {
-            print("DEBUG HINTS: Using cloud service for hints generation (AI available: \(isAppleIntelligenceAvailable), cloud enabled: \(useCloudAnalysis))")
             CloudAnalysisService.shared.generateHints(for: exercise) { result in
                 DispatchQueue.main.async {
                     self.isLoadingHints = false
@@ -253,7 +245,6 @@ struct ExerciseCardContent: View {
                 }
             }
         } else {
-            print("DEBUG HINTS: Using Apple Intelligence for hints generation")
             AIAnalysisService.shared.generateHints(for: exercise) { result in
                 DispatchQueue.main.async {
                     self.isLoadingHints = false
@@ -287,7 +278,6 @@ struct ExerciseCardContent: View {
         
         // Use cloud service if Apple Intelligence is not available OR if cloud analysis is enabled
         if !isAppleIntelligenceAvailable || useCloudAnalysis {
-            print("DEBUG SIMILAR: Using cloud service for similar exercises generation (AI available: \(isAppleIntelligenceAvailable), cloud enabled: \(useCloudAnalysis))")
             CloudAnalysisService.shared.generateSimilarExercises(
                 basedOn: exercise,
                 count: 3
@@ -304,7 +294,6 @@ struct ExerciseCardContent: View {
                 }
             }
         } else {
-            print("DEBUG SIMILAR: Using Apple Intelligence for similar exercises generation")
             AIAnalysisService.shared.generateSimilarExercises(
                 basedOn: exercise,
                 count: 3
@@ -338,12 +327,9 @@ struct ExerciseCardContent: View {
         // Validate we have an answer
         guard canvasDrawing != nil else {
             isVerifying = false
-            print("DEBUG VERIFY: No answer found for exercise \(exercise.exerciseNumber)")
             return
         }
-        
-        print("DEBUG VERIFY: Verifying answer - Type: canvas, Has canvas: \(canvasDrawing != nil)")
-        
+
         // Call verification service
         AnswerVerificationService.shared.verifyAnswer(
             exercise: exercise,
@@ -353,15 +339,14 @@ struct ExerciseCardContent: View {
         ) { [self] result in
             DispatchQueue.main.async {
                 self.isVerifying = false
-                
+
                 switch result {
                 case .success(let verificationResult):
-                    print("DEBUG VERIFY: Success - Correct: \(verificationResult.isCorrect)")
                     self.verificationResult = verificationResult
                     self.showVerificationResult = true
-                    
-                case .failure(let error):
-                    print("DEBUG VERIFY: Failed - \(error.localizedDescription)")
+
+                case .failure:
+                    break
                 }
             }
         }
@@ -688,7 +673,6 @@ private struct PracticeExerciseCard: View {
         // Validate we have an answer
         guard canvasDrawing != nil else {
             isVerifying = false
-            print("DEBUG VERIFY: No answer found for practice exercise")
             return
         }
 
@@ -703,8 +687,6 @@ private struct PracticeExerciseCard: View {
             inputType: originalExercise.inputType
         )
 
-        print("DEBUG VERIFY: Verifying practice answer - Type: canvas, Has canvas: \(canvasDrawing != nil)")
-
         // Call verification service
         AnswerVerificationService.shared.verifyAnswer(
             exercise: tempExercise,
@@ -717,12 +699,11 @@ private struct PracticeExerciseCard: View {
 
                 switch result {
                 case .success(let verificationResult):
-                    print("DEBUG VERIFY: Success - Correct: \(verificationResult.isCorrect)")
                     self.verificationResult = verificationResult
                     self.showVerificationResult = true
 
-                case .failure(let error):
-                    print("DEBUG VERIFY: Failed - \(error.localizedDescription)")
+                case .failure:
+                    break
                 }
             }
         }

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import GoogleSignIn
+import OSLog
 
 /// View for Google Classroom integration with tree structure navigation
 struct GoogleClassroomView: View {
@@ -198,10 +199,11 @@ struct GoogleClassroomView: View {
     // MARK: - Actions
 
     private func signIn() {
+        AppLogger.google.info("User initiated Google sign-in")
         // Get the root view controller
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let rootViewController = windowScene.windows.first?.rootViewController else {
-            print("❌ Could not find root view controller")
+            AppLogger.google.error("Could not find root view controller", error: NSError(domain: "GoogleClassroom", code: -1))
             return
         }
 
@@ -209,6 +211,7 @@ struct GoogleClassroomView: View {
     }
 
     private func signOut() {
+        AppLogger.google.info("User signed out of Google Classroom")
         authService.signOut()
         courses = []
         courseworkByID = [:]
@@ -216,6 +219,7 @@ struct GoogleClassroomView: View {
     }
 
     private func loadCourses() {
+        AppLogger.google.info("Loading Google Classroom courses")
         isLoading = true
         errorMessage = nil
 
@@ -223,10 +227,11 @@ struct GoogleClassroomView: View {
             do {
                 courses = try await GoogleClassroomService.shared.fetchCourses()
                 isLoading = false
+                AppLogger.google.info("Loaded \(courses.count) courses successfully")
             } catch {
                 errorMessage = error.localizedDescription
                 isLoading = false
-                print("❌ Failed to load courses: \(error)")
+                AppLogger.google.error("Failed to load courses", error: error)
             }
         }
     }
@@ -234,8 +239,10 @@ struct GoogleClassroomView: View {
     private func toggleCourse(_ course: ClassroomCourse) {
         if expandedCourses.contains(course.id) {
             expandedCourses.remove(course.id)
+            AppLogger.ui.info("User collapsed course: \(course.name)")
         } else {
             expandedCourses.insert(course.id)
+            AppLogger.ui.info("User expanded course: \(course.name)")
             // Load coursework if not already loaded
             if courseworkByID[course.id] == nil {
                 loadCoursework(for: course)
@@ -244,14 +251,16 @@ struct GoogleClassroomView: View {
     }
 
     private func loadCoursework(for course: ClassroomCourse) {
+        AppLogger.google.info("Loading coursework for course: \(course.name)")
         Task {
             do {
                 let coursework = try await GoogleClassroomService.shared.fetchCoursework(for: course.id)
                 await MainActor.run {
                     courseworkByID[course.id] = coursework
+                    AppLogger.google.info("Loaded \(coursework.count) assignments for \(course.name)")
                 }
             } catch {
-                print("❌ Failed to load coursework for \(course.name): \(error)")
+                AppLogger.google.error("Failed to load coursework for \(course.name)", error: error)
             }
         }
     }

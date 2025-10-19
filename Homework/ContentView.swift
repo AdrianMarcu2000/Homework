@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CoreData
+import OSLog
 
 /// Navigation tabs available in the app
 enum AppTab: String, CaseIterable {
@@ -489,14 +490,14 @@ private struct HomeworkExercisesDetailView: View {
 
     /// Analyze text-only homework using AI (no image available)
     private func analyzeTextOnly(text: String) {
-        print("🔍 Starting AI text analysis for local homework...")
+        AppLogger.ai.info("Starting text analysis for local homework")
 
         // Use AI analysis service for text-only homework
         AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let analysis):
-                    print("✅ Text analysis complete - Found \(analysis.exercises.count) exercises")
+                    AppLogger.ai.info("Text analysis complete - Found \(analysis.exercises.count) exercises")
 
                     // Save the analysis
                     do {
@@ -506,14 +507,14 @@ private struct HomeworkExercisesDetailView: View {
                         if let jsonString = String(data: jsonData, encoding: .utf8) {
                             self.item.analysisJSON = jsonString
                             try self.viewContext.save()
-                            print("✅ Text-only analysis saved to Core Data")
+                            AppLogger.persistence.info("Text-only analysis saved to Core Data")
                         }
                     } catch {
-                        print("❌ Error saving text-only analysis: \(error)")
+                        AppLogger.persistence.error("Error saving text-only analysis", error: error)
                     }
 
                 case .failure(let error):
-                    print("❌ Text analysis failed: \(error.localizedDescription)")
+                    AppLogger.ai.error("Text analysis failed", error: error)
                 }
             }
         }

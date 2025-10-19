@@ -475,12 +475,199 @@ AnswerVerificationService.shared.verifyAnswer(
 - **Inline answers**: Key format `"\(exerciseNumber)_\(startY)_inline"`, stored as UTF-8 `Data`
 - All answers stored in `Item.exerciseAnswersData` or `ClassroomAssignment.exerciseAnswers` as `[String: Data]`
 
+## Logging Standards
+
+This project uses Swift's OSLog framework via a centralized `AppLogger` utility for structured logging.
+
+### Logging Principles
+
+**CRITICAL: All new code MUST follow these logging principles:**
+
+1. **Use AppLogger, NEVER use `print()`**
+   - All logging goes through `AppLogger` in `Utilities/AppLogger.swift`
+   - `print()` statements are NOT allowed in production code
+   - Exception: Temporary debugging during development (must be removed before commit)
+
+2. **Log Levels**
+   - **`.info()`** - Use for:
+     - User interactions (button taps, inputs, navigation, selections)
+     - Third-party SDK/API interactions (Firebase, Google, Vision framework)
+     - Important state changes visible to users
+     - Successful completion of user-initiated operations
+   - **`.error()`** - Use for:
+     - All caught exceptions and errors
+     - Failed operations with user impact
+     - Network failures, API errors, service errors
+     - **MUST include error details**: Always pass the `Error` object when available
+
+3. **Never Log**
+   - Internal UI rendering details
+   - Component lifecycle events (onAppear, onDisappear)
+   - Computed property evaluations
+   - State variable updates unless directly user-triggered
+   - Verbose debug information about internal implementation
+
+### AppLogger Categories
+
+The `AppLogger` provides 10 specialized categories:
+
+```swift
+AppLogger.ui          // User interface interactions
+AppLogger.ocr         // Vision framework OCR operations
+AppLogger.ai          // On-device Apple Intelligence
+AppLogger.cloud       // Firebase Cloud Functions
+AppLogger.google      // Google APIs (Classroom, Drive, Auth)
+AppLogger.persistence // Core Data and CloudKit operations
+AppLogger.auth        // Biometric authentication, security
+AppLogger.subscription // StoreKit, subscription management
+AppLogger.image       // Image processing, segmentation
+AppLogger.lifecycle   // App launch, initialization
+```
+
+### Usage Examples
+
+**User Interactions:**
+```swift
+// Button taps
+AppLogger.ui.info("User selected camera for homework capture")
+AppLogger.ui.info("User tapped verify answer button")
+
+// User inputs
+AppLogger.ui.info("User entered text answer for exercise \(exerciseNumber)")
+AppLogger.ui.info("User signed out from Google Classroom")
+
+// Navigation
+AppLogger.ui.info("User navigated to course: \(courseName)")
+```
+
+**Third-Party SDK/API Calls:**
+```swift
+// API requests
+AppLogger.google.info("Fetching courses from Google Classroom")
+AppLogger.cloud.info("Sending verification request to cloud function")
+
+// API responses
+AppLogger.ocr.info("OCR completed successfully: \(blocks.count) blocks, \(fullText.count) characters")
+AppLogger.ai.info("Analysis complete with \(exercises.count) exercises identified")
+
+// SDK operations
+AppLogger.auth.info("Initiating biometric authentication")
+AppLogger.subscription.info("Checking subscription status")
+```
+
+**Error Logging:**
+```swift
+// With Error object (preferred)
+AppLogger.ocr.error("OCR processing failed", error: error)
+AppLogger.google.error("Failed to fetch courses", error: error)
+AppLogger.persistence.error("Core Data save failed", error: error)
+
+// Without Error object (when no Error is available)
+AppLogger.cloud.error("Server returned error (403): Access denied")
+AppLogger.ai.error("Invalid JSON response from AI model")
+```
+
+**Warning Logging:**
+```swift
+AppLogger.persistence.warning("Attempting to save without required field")
+AppLogger.google.warning("Access token expired, refreshing...")
+```
+
+### Log Format
+
+All logs are automatically formatted with:
+- **Prefix:** `BlueFern.Homework`
+- **Icon:** Visual indicator based on log level
+  - ℹ️ Info
+  - ❌ Error
+  - ⚠️ Warning
+  - 🔍 Debug (rarely used)
+- **Category:** Logged via OSLog subsystem/category for filtering
+
+Example log output:
+```
+ℹ️ BlueFern.Homework | User selected camera for homework capture
+❌ BlueFern.Homework | OCR processing failed: The operation couldn't be completed
+🌐 BlueFern.Homework | [GET] https://classroom.googleapis.com/v1/courses
+✅ BlueFern.Homework | [200] https://classroom.googleapis.com/v1/courses
+```
+
+### Importing and Using
+
+Every file that uses logging must:
+
+1. Import OSLog:
+```swift
+import OSLog
+```
+
+2. Use appropriate category:
+```swift
+// In a view handling user interactions
+AppLogger.ui.info("User action description")
+
+// In a service calling APIs
+AppLogger.google.info("API operation description")
+
+// In error handlers
+AppLogger.persistence.error("Operation failed", error: error)
+```
+
+### Best Practices
+
+1. **Be specific but concise** - Describe what happened, not how
+   - ✅ `"User verified answer for exercise 3"`
+   - ❌ `"Tapped button in ExerciseCard component"`
+
+2. **Include relevant context** - Use interpolation for IDs, counts, states
+   - ✅ `"Downloaded \(courses.count) courses from classroom"`
+   - ❌ `"Downloaded courses"`
+
+3. **Log before async operations** - Helps trace issues
+   ```swift
+   AppLogger.cloud.info("Sending analysis request to cloud function")
+   let result = try await cloudFunction()
+   ```
+
+4. **Always log errors with details**
+   ```swift
+   catch {
+       AppLogger.ai.error("Failed to generate hints", error: error)
+       // Handle error
+   }
+   ```
+
+5. **Use Console.app filtering** - Logs can be filtered by:
+   - Subsystem: `BlueFern.Homework`
+   - Category: `UI`, `OCR`, `AI`, `Cloud`, etc.
+   - Log level: Info, Error, Warning
+
+### Migration from print()
+
+When replacing existing `print()` statements:
+
+1. **Delete** if it's debug/internal logging (UI rendering, state updates)
+2. **Replace with `.info()`** if it logs user actions or API calls
+3. **Replace with `.error()`** if it logs errors or exceptions
+4. **Add error parameter** if an Error object is available
+
+Example migration:
+```swift
+// Before
+print("User tapped camera button")
+print("Error: \(error)")
+
+// After
+AppLogger.ui.info("User selected camera for homework capture")
+AppLogger.ocr.error("OCR processing failed", error: error)
+```
+
 ## Development Notes
 
 - **Swift Concurrency:** Project uses `SWIFT_APPROACHABLE_CONCURRENCY = YES` and `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
 - **Deployment Target:** iOS 26.0 (bleeding-edge Xcode 16 beta requirement)
 - **UI Design:** Custom glassmorphic button style with liquid glass materials, gradient toolbars, tab-based detail view
-- **Error Handling:** Most Core Data operations use `fatalError()` - production code would need proper error handling
+- **Error Handling:** Errors should be logged via `AppLogger.[category].error()` with proper error propagation; avoid `fatalError()` except for truly unrecoverable states
 - **Preview Support:** Uses `PersistenceController.preview` for in-memory Core Data in SwiftUI previews
 - **Image Cropping:** `UIImage+Crop` extension handles Y-coordinate flipping and padding for visual crops
 - **Position Tracking:** Y-coordinates from Vision (0.0 = bottom, 1.0 = top) used throughout for consistency

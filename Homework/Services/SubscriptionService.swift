@@ -9,6 +9,7 @@ import Foundation
 import StoreKit
 import Combine
 import UIKit
+import OSLog
 
 /// Manages in-app subscriptions using StoreKit 2
 @MainActor
@@ -62,26 +63,25 @@ class SubscriptionService: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        print("🔄 Loading products for ID: \(cloudAIMonthlyID)")
+        AppLogger.subscription.info("Loading products for ID: \(self.cloudAIMonthlyID)")
 
         do {
             let products = try await Product.products(for: [cloudAIMonthlyID])
-            print("📦 Received \(products.count) products from StoreKit")
+            AppLogger.subscription.debug("Received \(products.count) products from StoreKit")
 
             if products.isEmpty {
-                print("⚠️ No products found. Make sure Configuration.storekit is selected in Xcode scheme.")
+                AppLogger.subscription.error("No products found. Make sure Configuration.storekit is selected in Xcode scheme.")
                 purchaseError = "No subscription products available. Please check StoreKit configuration."
             } else {
                 for product in products {
-                    print("  - Product: \(product.id), Price: \(product.displayPrice), Name: \(product.displayName)")
+                    AppLogger.subscription.debug("  - Product: \(product.id), Price: \(product.displayPrice), Name: \(product.displayName)")
                 }
             }
 
             self.products = products.sorted { $0.price < $1.price }
-            print("✅ Loaded \(products.count) subscription product(s)")
+            AppLogger.subscription.info("Loaded \(products.count) subscription product(s)")
         } catch {
-            print("❌ Failed to load products: \(error)")
-            print("   Error details: \(error.localizedDescription)")
+            AppLogger.subscription.error("Failed to load products", error: error)
             purchaseError = "Failed to load subscription options: \(error.localizedDescription)"
         }
     }
@@ -99,7 +99,7 @@ class SubscriptionService: ObservableObject {
             switch result {
             case .success(let verification):
                 // Verify the transaction
-                let transaction = try checkVerified(verification)
+                let transaction = try SubscriptionService.checkVerified(verification)
 
                 // Update subscription status
                 await updateSubscriptionStatus()
@@ -110,25 +110,25 @@ class SubscriptionService: ObservableObject {
                 // Enable cloud AI by default after successful subscription
                 AppSettings.shared.useCloudAnalysis = true
 
-                print("✅ Purchase successful: \(product.id)")
-                print("✅ Cloud AI enabled by default")
+                AppLogger.subscription.info("Purchase successful: \(product.id)")
+                AppLogger.subscription.info("Cloud AI enabled by default")
                 return true
 
             case .userCancelled:
-                print("⚠️ User cancelled purchase")
+                AppLogger.subscription.info("User cancelled purchase")
                 return false
 
             case .pending:
-                print("⏳ Purchase pending approval")
+                AppLogger.subscription.info("Purchase pending approval")
                 purchaseError = "Purchase is pending approval"
                 return false
 
             @unknown default:
-                print("❌ Unknown purchase result")
+                AppLogger.subscription.error("Unknown purchase result")
                 return false
             }
         } catch {
-            print("❌ Purchase failed: \(error)")
+            AppLogger.subscription.error("Purchase failed", error: error)
             purchaseError = "Purchase failed: \(error.localizedDescription)"
             return false
         }
@@ -143,9 +143,9 @@ class SubscriptionService: ObservableObject {
         do {
             try await AppStore.sync()
             await updateSubscriptionStatus()
-            print("✅ Purchases restored")
+            AppLogger.subscription.info("Purchases restored")
         } catch {
-            print("❌ Failed to restore purchases: \(error)")
+            AppLogger.subscription.error("Failed to restore purchases", error: error)
             purchaseError = "Failed to restore purchases: \(error.localizedDescription)"
         }
     }
@@ -158,15 +158,15 @@ class SubscriptionService: ObservableObject {
         // Check for active subscription
         for await result in Transaction.currentEntitlements {
             do {
-                let transaction = try checkVerified(result)
+                let transaction = try SubscriptionService.checkVerified(result)
 
                 // Check if this is our cloud AI subscription
-                if transaction.productID == cloudAIMonthlyID {
+                if transaction.productID == self.cloudAIMonthlyID {
                     activeSubscription = transaction
                     break
                 }
             } catch {
-                print("❌ Failed to verify transaction: \(error)")
+                AppLogger.subscription.error("Failed to verify transaction", error: error)
             }
         }
 
@@ -174,25 +174,25 @@ class SubscriptionService: ObservableObject {
             if let expirationDate = transaction.expirationDate {
                 if expirationDate > Date() {
                     subscriptionStatus = .subscribed(expirationDate: expirationDate)
-                    print("✅ Active subscription until \(expirationDate)")
+                    AppLogger.subscription.info("Active subscription until \(expirationDate)")
                 } else {
                     subscriptionStatus = .expired
-                    print("⚠️ Subscription expired on \(expirationDate)")
+                    AppLogger.subscription.info("Subscription expired on \(expirationDate)")
                 }
             } else {
                 // No expiration date means lifetime or non-expiring
                 subscriptionStatus = .subscribed(expirationDate: nil)
-                print("✅ Active subscription (no expiration)")
+                AppLogger.subscription.info("Active subscription (no expiration)")
             }
 
             // Check for revocation
             if transaction.revocationDate != nil {
                 subscriptionStatus = .revoked
-                print("⚠️ Subscription was revoked")
+                AppLogger.subscription.error("Subscription was revoked")
             }
         } else {
             subscriptionStatus = .notSubscribed
-            print("ℹ️ No active subscription")
+            AppLogger.subscription.debug("No active subscription")
         }
 
         // Sync with AppSettings
@@ -204,33 +204,33 @@ class SubscriptionService: ObservableObject {
         // Enable cloud AI automatically when subscription becomes active
         if !wasSubscribed && isNowSubscribed {
             AppSettings.shared.useCloudAnalysis = true
-            print("✅ Cloud AI enabled automatically with new subscription")
+            AppLogger.subscription.info("Cloud AI enabled automatically with new subscription")
         }
     }
 
     // MARK: - Transaction Listener
 
     private func listenForTransactions() -> Task<Void, Error> {
-        return Task.detached {
+        return Task.detached { [weak self] in
             // Listen for transaction updates
             for await result in Transaction.updates {
                 do {
-                    let transaction = try self.checkVerified(result)
+                    let transaction = try Self.checkVerified(result)
 
                     // Update subscription status on main actor
-                    await self.updateSubscriptionStatus()
+                    await self?.updateSubscriptionStatus()
 
                     // Finish the transaction
                     await transaction.finish()
                 } catch {
-                    print("❌ Transaction verification failed: \(error)")
+                    await AppLogger.subscription.error("Transaction verification failed", error: error)
                 }
             }
         }
     }
 
     // MARK: - Verification Helper
-    nonisolated private func checkVerified(_ result: StoreKit.VerificationResult<Transaction>) throws -> Transaction {
+    nonisolated private static func checkVerified(_ result: StoreKit.VerificationResult<Transaction>) throws -> Transaction {
         switch result {
         case .unverified:
             throw SubscriptionError.failedVerification
@@ -248,7 +248,7 @@ class SubscriptionService: ObservableObject {
             do {
                 try await AppStore.showManageSubscriptions(in: windowScene)
             } catch {
-                print("❌ Failed to open manage subscriptions: \(error)")
+                AppLogger.subscription.error("Failed to open manage subscriptions", error: error)
                 purchaseError = "Failed to open subscription management"
             }
         }

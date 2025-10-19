@@ -8,6 +8,7 @@
 import Foundation
 import GoogleSignIn
 import Combine
+import OSLog
 
 /// Service for managing Google Sign-In authentication with persistent sessions
 @MainActor
@@ -45,7 +46,7 @@ class GoogleAuthService: ObservableObject {
         let configuration = GIDConfiguration(clientID: clientID)
         GIDSignIn.sharedInstance.configuration = configuration
 
-        print("✅ Google Sign-In configured with client ID: \(clientID.prefix(20))...")
+        AppLogger.google.info("Google Sign-In configured with client ID: \(self.clientID.prefix(20))...")
     }
 
     // MARK: - Public Methods
@@ -55,14 +56,14 @@ class GoogleAuthService: ObservableObject {
         GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
             Task { @MainActor in
                 if let error = error {
-                    print("⚠️ No previous sign-in found: \(error.localizedDescription)")
+                    AppLogger.google.debug("No previous sign-in found: \(error.localizedDescription)")
                     self.isSignedIn = false
                     self.currentUser = nil
                     return
                 }
 
                 if let user = user {
-                    print("✅ Restored previous Google sign-in for: \(user.profile?.email ?? "unknown")")
+                    AppLogger.google.info("Restored previous Google sign-in for: \(user.profile?.email ?? "unknown")")
                     self.currentUser = user
                     self.isSignedIn = true
 
@@ -92,7 +93,7 @@ class GoogleAuthService: ObservableObject {
                 // Silent sign-in success
 
             } catch {
-                print("❌ Sign-in error: \(error.localizedDescription)")
+                AppLogger.google.error("Sign-in error", error: error)
                 self.errorMessage = error.localizedDescription
                 self.isSignedIn = false
             }
@@ -104,7 +105,7 @@ class GoogleAuthService: ObservableObject {
         GIDSignIn.sharedInstance.signOut()
         self.currentUser = nil
         self.isSignedIn = false
-        print("👋 Signed out from Google")
+        AppLogger.google.info("Signed out from Google")
     }
 
     /// Get current access token (refresh if expired)
@@ -156,9 +157,9 @@ class GoogleAuthService: ObservableObject {
             Task {
                 do {
                     _ = try await refreshAccessToken()
-                    print("🔄 Access token refreshed")
+                    AppLogger.google.debug("Access token refreshed")
                 } catch {
-                    print("❌ Failed to refresh token: \(error.localizedDescription)")
+                    AppLogger.google.error("Failed to refresh token", error: error)
                 }
             }
         }

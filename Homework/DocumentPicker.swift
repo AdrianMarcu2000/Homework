@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import OSLog
 
 /// A SwiftUI wrapper for UIDocumentPickerViewController that allows users to select image files
 struct DocumentPicker: UIViewControllerRepresentable {
@@ -43,7 +44,7 @@ struct DocumentPicker: UIViewControllerRepresentable {
 
             // Access the security-scoped resource
             guard url.startAccessingSecurityScopedResource() else {
-                print("❌ Failed to access security-scoped resource")
+                AppLogger.ui.error("Failed to access security-scoped resource")
                 parent.presentationMode.wrappedValue.dismiss()
                 return
             }
@@ -57,12 +58,12 @@ struct DocumentPicker: UIViewControllerRepresentable {
                 let imageData = try Data(contentsOf: url)
                 if let image = UIImage(data: imageData) {
                     parent.selectedImage = image
-                    print("✅ Successfully loaded image from file: \(url.lastPathComponent)")
+                    AppLogger.ui.info("Loaded image from file: \(url.lastPathComponent)")
                 } else {
-                    print("❌ Failed to create UIImage from data")
+                    AppLogger.ui.error("Failed to create UIImage from file data")
                 }
             } catch {
-                print("❌ Error loading image from file: \(error.localizedDescription)")
+                AppLogger.ui.error("Error loading image from file", error: error)
             }
 
             parent.presentationMode.wrappedValue.dismiss()

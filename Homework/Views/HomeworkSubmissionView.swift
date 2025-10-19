@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PencilKit
+import OSLog
 
 /// View for assembling and displaying homework submission before turning in
 struct HomeworkSubmissionView: View {
@@ -189,7 +190,7 @@ struct HomeworkSubmissionView: View {
                     }
                 }
             } catch {
-                print("❌ Failed to load submission state: \(error)")
+                AppLogger.google.error("Failed to load submission state", error: error)
             }
         }
     }
@@ -236,7 +237,7 @@ struct HomeworkSubmissionView: View {
                     exercisesWithAnswers: exercisesWithAnswers
                 )
 
-                print("✅ PDF generated: \(pdfData.count) bytes")
+                AppLogger.google.info("PDF generated: \(pdfData.count) bytes")
 
                 // Submit to Google Classroom
                 let fileId = try await GoogleClassroomService.shared.turnInAssignment(
@@ -246,7 +247,7 @@ struct HomeworkSubmissionView: View {
                     fileName: "\(assignment.title)_\(UUID().uuidString).pdf"
                 )
 
-                print("✅ Homework submitted successfully")
+                AppLogger.google.info("Homework submitted successfully")
 
                 await MainActor.run {
                     isSubmitting = false
@@ -255,7 +256,7 @@ struct HomeworkSubmissionView: View {
                     showSuccessAlert = true
                 }
             } catch {
-                print("❌ Failed to submit homework: \(error)")
+                AppLogger.google.error("Failed to submit homework", error: error)
                 await MainActor.run {
                     isSubmitting = false
                     submitError = error.localizedDescription

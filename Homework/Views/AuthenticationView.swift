@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import OSLog
 
 /// View that presents authentication screen before allowing app access
 struct AuthenticationView: View {
@@ -108,7 +109,11 @@ struct AuthenticationView: View {
 
             if !success {
                 showError = true
-                print("Authentication failed: \(error?.localizedDescription ?? "Unknown error")")
+                if let error = error {
+                    AppLogger.auth.error("Authentication failed", error: error)
+                } else {
+                    AppLogger.auth.error("Authentication failed - Unknown error")
+                }
             }
         }
     }

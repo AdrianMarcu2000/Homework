@@ -9,6 +9,7 @@ import UIKit
 import Foundation
 import FirebaseAppCheck
 import PencilKit
+import OSLog
 
 /// Result of answer verification from cloud
 struct VerificationResult: Sendable {
@@ -94,7 +95,7 @@ class AnswerVerificationService {
     ) {
         #if DEBUG
         let appCheckToken = "emulator-bypass-token"
-        print("🔐 DEBUG VERIFY: Using emulator bypass token")
+        AppLogger.persistence.info("DEBUG mode: Using emulator bypass token for verification")
 
         performVerificationRequest(
             exercise: exercise,
@@ -105,22 +106,22 @@ class AnswerVerificationService {
             completion: completion
         )
         #else
-        print("🔐 RELEASE: Getting App Check token for verification...")
+        AppLogger.persistence.info("RELEASE mode: Getting App Check token for verification...")
         AppCheck.appCheck().token(forcingRefresh: false) { token, error in
             if let error = error {
-                print("❌ App Check token error - \(error.localizedDescription)")
+                AppLogger.persistence.error("App Check token error", error: error)
                 completion(.failure(VerificationError.appCheckFailed(error)))
                 return
             }
 
             guard let token = token else {
-                print("❌ No App Check token received")
+                AppLogger.persistence.error("No App Check token received")
                 completion(.failure(VerificationError.noAppCheckToken))
                 return
             }
 
             let appCheckToken = token.token
-            print("✅ App Check token obtained for verification")
+            AppLogger.persistence.info("App Check token obtained for verification")
 
             self.performVerificationRequest(
                 exercise: exercise,
@@ -153,7 +154,6 @@ class AnswerVerificationService {
             if let imageData = image.jpegData(compressionQuality: 0.7) {
                 answerImageBase64 = imageData.base64EncodedString()
                 answerImageMimeType = "image/jpeg"
-                print("DEBUG VERIFY: Converted canvas to image - \(imageData.count) bytes")
             }
         }
 
@@ -181,13 +181,12 @@ class AnswerVerificationService {
             return
         }
 
-        print("DEBUG VERIFY: Sending verification request for exercise \(exercise.exerciseNumber)")
-        print("DEBUG VERIFY: Answer type: \(answerType)")
+        AppLogger.persistence.info("Verifying \(answerType) answer for exercise \(exercise.exerciseNumber)")
 
         // Execute request
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("DEBUG VERIFY: Network error - \(error.localizedDescription)")
+                AppLogger.persistence.error("Network error in verification", error: error)
                 completion(.failure(VerificationError.networkError(error)))
                 return
             }
@@ -197,11 +196,9 @@ class AnswerVerificationService {
                 return
             }
 
-            print("DEBUG VERIFY: Response status code: \(httpResponse.statusCode)")
-
             guard httpResponse.statusCode == 200 else {
                 let errorMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
-                print("DEBUG VERIFY: Error response: \(errorMessage)")
+                AppLogger.persistence.error("Verification error response: \(errorMessage)")
                 completion(.failure(VerificationError.serverError(httpResponse.statusCode, errorMessage)))
                 return
             }
@@ -214,13 +211,10 @@ class AnswerVerificationService {
             // Decode verification result
             do {
                 let result = try JSONDecoder().decode(VerificationResult.self, from: data)
-                print("DEBUG VERIFY: Verification complete - Correct: \(result.isCorrect), Confidence: \(result.confidence)")
+                AppLogger.persistence.info("Verification complete - Correct: \(result.isCorrect), Confidence: \(result.confidence)")
                 completion(.success(result))
             } catch {
-                print("DEBUG VERIFY: Decoding error - \(error.localizedDescription)")
-                if let jsonString = String(data: data, encoding: .utf8) {
-                    print("DEBUG VERIFY: Raw response: \(jsonString)")
-                }
+                AppLogger.persistence.error("Verification decoding error", error: error)
                 completion(.failure(VerificationError.decodingFailed(error)))
             }
         }

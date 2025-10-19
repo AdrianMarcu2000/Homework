@@ -8,6 +8,7 @@
 import UIKit
 import Foundation
 import FoundationModels
+import OSLog
 
 /// Service for analyzing homework images using Apple's Foundation Models
 /// to identify and segment lessons and exercises.
@@ -146,8 +147,6 @@ class AIAnalysisService {
             gapThreshold: 0.05
         )
 
-        print("DEBUG SEGMENTATION: Created \(segments.count) initial segments")
-
         // Merge small segments to avoid over-fragmentation
         let mergedSegments = ImageSegmentationService.shared.mergeSmallSegments(
             segments,
@@ -155,7 +154,7 @@ class AIAnalysisService {
             fullImage: image
         )
 
-        print("DEBUG SEGMENTATION: After merging: \(mergedSegments.count) segments")
+        AppLogger.ai.info("Segmented image into \(mergedSegments.count) sections for analysis")
 
         guard !mergedSegments.isEmpty else {
             completion(.failure(AIAnalysisError.parsingFailed(NSError(
@@ -226,9 +225,6 @@ Return ONLY the JSON object:
                 do {
                     let response = try await session.respond(to: prompt)
 
-                    print("DEBUG: AI Response for segment \(index + 1):")
-                    print(response.content)
-
                     var jsonString = response.content
 
                     // Remove markdown code block wrapper if present
@@ -244,28 +240,21 @@ Return ONLY the JSON object:
                     }
                     jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                    print("DEBUG: Extracted JSON:")
-                    print(jsonString)
-
                     guard let data = jsonString.data(using: .utf8) else {
-                        print("DEBUG: Failed to convert JSON to data for segment \(index + 1)")
+                        AppLogger.ai.error("Failed to convert JSON to data for segment \(index + 1)")
                         continue
                     }
 
                     // Parse segment result
                     let segmentResult = try JSONDecoder().decode(SegmentAnalysisResult.self, from: data)
 
-                    print("DEBUG: Segment \(index + 1) - Type: \(segmentResult.type)")
-
                     if segmentResult.type == "exercise", let exercise = segmentResult.exercise {
-                        print("DEBUG: Found exercise #\(exercise.exerciseNumber), Y: \(exercise.startY)-\(exercise.endY)")
+                        AppLogger.ai.info("Found exercise #\(exercise.exerciseNumber) at Y: \(exercise.startY)-\(exercise.endY)")
                         allExercises.append(exercise)
-                    } else {
-                        print("DEBUG: Segment skipped (not an exercise)")
                     }
                 } catch {
-                    print("DEBUG: Error analyzing segment \(index + 1): \(error.localizedDescription)")
-                    print("DEBUG: Continuing with remaining segments...")
+                    AppLogger.ai.error("Error analyzing segment \(index + 1)", error: error)
+                    AppLogger.ai.info("Continuing with remaining segments...")
                     continue
                 }
             }
@@ -274,11 +263,7 @@ Return ONLY the JSON object:
             // In Vision coordinates, higher Y = higher on page, so sort DESCENDING for reading order
             let sortedExercises = allExercises.sorted { $0.startY > $1.startY }
 
-            print("DEBUG: Final analysis complete - Exercises: \(allExercises.count)")
-            print("DEBUG: Exercise order after sorting (top to bottom):")
-            for (idx, ex) in sortedExercises.enumerated() {
-                print("  Position \(idx): Exercise #\(ex.exerciseNumber), Y: \(ex.startY)-\(ex.endY)")
-            }
+            AppLogger.ai.info("Analysis complete with \(allExercises.count) exercises identified")
 
             let finalResult = AnalysisResult(
                 exercises: sortedExercises
@@ -471,7 +456,6 @@ Return ONLY the JSON object:
 
         Task {
             do {
-                print("DEBUG: Prompt for similar exercises: \(prompt)")
                 let response = try await session.respond(to: prompt)
 
                 let jsonString = response.content
@@ -486,13 +470,12 @@ Return ONLY the JSON object:
                 let decoder = JSONDecoder()
                 let exercises = try decoder.decode([SimilarExercise].self, from: data)
 
+                AppLogger.ai.info("Generated \(exercises.count) similar exercises")
                 await MainActor.run {
                     completion(.success(exercises))
                 }
             } catch {
-                print("ERROR: Parsing similar exercises failed")
-                print("Error details: \(error)")
-                print("========================")
+                AppLogger.ai.error("Failed to generate similar exercises", error: error)
                 await MainActor.run {
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }
@@ -567,13 +550,7 @@ Return ONLY valid JSON:
             do {
                 let response = try await session.respond(to: prompt)
 
-                print("DEBUG TEXT ANALYSIS: AI Response:")
-                print(response.content)
-
                 let jsonString = response.content
-
-                print("DEBUG TEXT ANALYSIS: Extracted JSON:")
-                print(jsonString)
 
                 guard let data = jsonString.data(using: .utf8) else {
                     await MainActor.run {
@@ -615,13 +592,13 @@ Return ONLY valid JSON:
 
                 let finalResult = AnalysisResult(exercises: exercises)
 
-                print("DEBUG TEXT ANALYSIS: Found \(exercises.count) exercises")
+                AppLogger.ai.info("Text-only analysis found \(exercises.count) exercises")
 
                 await MainActor.run {
                     completion(.success(finalResult))
                 }
             } catch {
-                print("DEBUG TEXT ANALYSIS: Error - \(error.localizedDescription)")
+                AppLogger.ai.error("Text-only analysis failed", error: error)
                 await MainActor.run {
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }
@@ -791,14 +768,11 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
 
         Task {
             do {
-                print("DEBUG HINTS: Generating hints for exercise: \(exercise.exerciseNumber)")
-                print("DEBUG HINTS: Prompt:\n\(prompt)")
+                AppLogger.ai.info("Generating hints for exercise: \(exercise.exerciseNumber)")
 
                 let response = try await session.respond(to: prompt)
-                print("DEBUG HINTS: AI Response:\n\(response.content)")
 
                 var jsonString = response.content
-                print("DEBUG HINTS: Extracted JSON:\n\(jsonString)")
 
                 // Remove markdown code block wrapper if present
                 jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -815,30 +789,9 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
 
                 // Sanitize LaTeX in JSON - fix improperly escaped backslashes
                 jsonString = sanitizeLaTeXInJSON(jsonString)
-                print("DEBUG HINTS: Sanitized JSON:\n\(jsonString)")
-                print("DEBUG HINTS: Sanitized JSON length: \(jsonString.count)")
-                print("DEBUG HINTS: First 100 chars: \(String(jsonString.prefix(100)))")
-                print("DEBUG HINTS: Last 100 chars: \(String(jsonString.suffix(100)))")
-
-                // Test if the JSON is valid before attempting to parse
-                if let testData = jsonString.data(using: .utf8) {
-                    print("DEBUG HINTS: Data size: \(testData.count) bytes")
-                    do {
-                        let _ = try JSONSerialization.jsonObject(with: testData, options: [])
-                        print("DEBUG HINTS: ✅ JSON is valid")
-                    } catch {
-                        print("DEBUG HINTS: ❌ JSON validation failed: \(error)")
-                        // Try to identify the problematic area
-                        if let errorDescription = error.localizedDescription.lowercased() as String? {
-                            print("DEBUG HINTS: Error description: \(errorDescription)")
-                        }
-                    }
-                } else {
-                    print("DEBUG HINTS: ❌ Failed to convert sanitized JSON to UTF-8 data")
-                }
 
                 guard let data = jsonString.data(using: .utf8) else {
-                    print("DEBUG HINTS: Failed to convert JSON string to data.")
+                    AppLogger.ai.error("Failed to convert JSON string to data")
                     await MainActor.run {
                         completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert JSON string to data"]))))
                     }
@@ -848,50 +801,37 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
                 let decoder = JSONDecoder()
                 do {
                     let hints = try decoder.decode([Hint].self, from: data)
-                    print("DEBUG HINTS: Successfully parsed \(hints.count) hints.")
+                    AppLogger.ai.info("Successfully generated \(hints.count) hints")
 
                     await MainActor.run {
                         completion(.success(hints))
                     }
                 } catch let decodingError as DecodingError {
-                    print("DEBUG HINTS: Decoding error details:")
+                    AppLogger.ai.error("Hint decoding error")
                     switch decodingError {
                     case .dataCorrupted(let context):
-                        print("  - Data corrupted: \(context.debugDescription)")
-                        print("  - Coding path: \(context.codingPath)")
+                        AppLogger.ai.error("  - Data corrupted: \(context.debugDescription)")
                     case .keyNotFound(let key, let context):
-                        print("  - Key not found: \(key.stringValue)")
-                        print("  - Context: \(context.debugDescription)")
-                        print("  - Coding path: \(context.codingPath)")
+                        AppLogger.ai.error("  - Key not found: \(key.stringValue) - \(context.debugDescription)")
                     case .typeMismatch(let type, let context):
-                        print("  - Type mismatch: expected \(type)")
-                        print("  - Context: \(context.debugDescription)")
-                        print("  - Coding path: \(context.codingPath)")
+                        AppLogger.ai.error("  - Type mismatch: expected \(type) - \(context.debugDescription)")
                     case .valueNotFound(let type, let context):
-                        print("  - Value not found: \(type)")
-                        print("  - Context: \(context.debugDescription)")
-                        print("  - Coding path: \(context.codingPath)")
+                        AppLogger.ai.error("  - Value not found: \(type) - \(context.debugDescription)")
                     @unknown default:
-                        print("  - Unknown decoding error: \(decodingError)")
-                    }
-
-                    // Try to parse as raw JSON to see structure
-                    if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []) {
-                        print("DEBUG HINTS: Raw JSON structure:")
-                        print(jsonObject)
+                        AppLogger.ai.error("  - Unknown decoding error", error: decodingError)
                     }
 
                     await MainActor.run {
                         completion(.failure(AIAnalysisError.parsingFailed(decodingError)))
                     }
                 } catch {
-                    print("DEBUG HINTS: Non-decoding error: \(error.localizedDescription)")
+                    AppLogger.ai.error("Non-decoding error during hint generation", error: error)
                     await MainActor.run {
                         completion(.failure(AIAnalysisError.parsingFailed(error)))
                     }
                 }
             } catch {
-                print("DEBUG HINTS: Error generating hints: \(error.localizedDescription)")
+                AppLogger.ai.error("Error generating hints", error: error)
                 await MainActor.run {
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }
@@ -910,7 +850,7 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
         let pattern = #"("content"\s*:\s*")([^"]*(?:\\.[^"]*)*)"#
 
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
-            print("DEBUG HINTS: Failed to create regex for sanitization")
+            AppLogger.ai.error("Failed to create regex for JSON sanitization")
             return json
         }
 

@@ -41,7 +41,7 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
         guard let materials = coursework.materials else { return nil }
 
         for material in materials {
-            if let driveFile = material.driveFile {
+            if let driveFile = material.driveFile?.driveFile {
                 // Check if it's an image by looking at the title extension
                 let imageExtensions = ["jpg", "jpeg", "png", "gif", "heic", "heif"]
                 let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()

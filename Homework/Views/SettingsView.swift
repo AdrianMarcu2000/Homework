@@ -12,6 +12,8 @@ import OSLog
 struct SettingsView: View {
     @EnvironmentObject var authService: BiometricAuthService
     @StateObject private var subscriptionService = SubscriptionService.shared
+    @StateObject private var googleAuthService = GoogleAuthService.shared
+
     @AppStorage("requireAuthentication") private var requireAuthentication = true
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
     @State private var showingSubscription = false
@@ -190,6 +192,26 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("About")
+                }
+
+                Section {
+                    Button(role: .destructive, action: {
+                        googleAuthService.disconnect()
+                    }) {
+                        HStack {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.red)
+
+                            Text("Disconnect Google Account")
+                                .foregroundColor(.red)
+
+                            Spacer()
+                        }
+                    }
+                } header: {
+                    Text("Google Classroom")
+                } footer: {
+                    Text("This will sign you out and revoke all permissions granted to the app. You will need to sign in and grant permissions again to use Google Classroom features.")
                 }
             }
             .navigationTitle("Settings")

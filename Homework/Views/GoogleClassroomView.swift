@@ -217,7 +217,6 @@ struct GoogleClassroomView: View {
         courseworkByID = [:]
         expandedCourses = []
     }
-
     private func loadCourses() {
         AppLogger.google.info("Loading Google Classroom courses")
         isLoading = true

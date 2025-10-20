@@ -68,3 +68,5 @@ node_modules/
 # dataconnect generated files
 .dataconnect
 Homework.xcodeproj/project.xcworkspace/xcuserdata/adi.xcuserdatad/UserInterfaceState.xcuserstate
+.DS_Store
+Homework.xcodeproj/project.xcworkspace/xcuserdata/tech61.xcuserdatad/UserInterfaceState.xcuserstate

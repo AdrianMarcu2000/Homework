@@ -108,6 +108,23 @@ class GoogleAuthService: ObservableObject {
         AppLogger.google.info("Signed out from Google")
     }
 
+    /// Disconnect the user's Google account from the app
+    func disconnect() {
+        GIDSignIn.sharedInstance.disconnect { error in
+            Task { @MainActor in
+                if let error = error {
+                    AppLogger.google.error("Error disconnecting: \(error.localizedDescription)")
+                    self.errorMessage = error.localizedDescription
+                } else {
+                    AppLogger.google.info("Google account disconnected from the app.")
+                    self.currentUser = nil
+                    self.isSignedIn = false
+                    self.errorMessage = nil
+                }
+            }
+        }
+    }
+
     /// Get current access token (refresh if expired)
     nonisolated func getAccessToken(forceRefresh: Bool = false) async throws -> String {
         guard let user = await self.currentUser else {

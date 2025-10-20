@@ -488,10 +488,14 @@ struct ClassroomCoursework: Codable, Identifiable {
 
 /// Material attached to coursework
 struct Material: Codable {
-    let driveFile: DriveFile?
+    let driveFile: DriveFileShare?
     let youtubeVideo: YouTubeVideo?
     let link: Link?
     let form: Form?
+}
+
+struct DriveFileShare: Codable {
+    let driveFile: DriveFile
 }
 
 struct DriveFile: Codable {

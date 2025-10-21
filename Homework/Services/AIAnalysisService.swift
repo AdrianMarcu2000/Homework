@@ -223,7 +223,19 @@ Return ONLY the JSON object:
 """
 
                 do {
+                    AppLogger.ai.info("📤 SENDING PROMPT TO AI (Segment \(index + 1)/\(totalSegments)):")
+                    AppLogger.ai.info("Prompt length: \(prompt.count) characters")
+                    AppLogger.ai.info("---PROMPT START---")
+                    AppLogger.ai.info(prompt)
+                    AppLogger.ai.info("---PROMPT END---")
+
                     let response = try await session.respond(to: prompt)
+
+                    AppLogger.ai.info("📥 RECEIVED RESPONSE FROM AI (Segment \(index + 1)/\(totalSegments)):")
+                    AppLogger.ai.info("Response length: \(response.content.count) characters")
+                    AppLogger.ai.info("---RESPONSE START---")
+                    AppLogger.ai.info(response.content)
+                    AppLogger.ai.info("---RESPONSE END---")
 
                     var jsonString = response.content
 
@@ -240,6 +252,23 @@ Return ONLY the JSON object:
                     }
                     jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
 
+                    AppLogger.ai.info("🧹 CLEANED JSON (Segment \(index + 1)/\(totalSegments)):")
+                    AppLogger.ai.info("---CLEANED JSON START---")
+                    AppLogger.ai.info(jsonString)
+                    AppLogger.ai.info("---CLEANED JSON END---")
+
+                    // Fix LaTeX backslash escaping: \( -> \\(, \) -> \\), \[ -> \\[, \] -> \\]
+                    jsonString = jsonString
+                        .replacingOccurrences(of: "\\(", with: "\\\\(")
+                        .replacingOccurrences(of: "\\)", with: "\\\\)")
+                        .replacingOccurrences(of: "\\[", with: "\\\\[")
+                        .replacingOccurrences(of: "\\]", with: "\\\\]")
+
+                    AppLogger.ai.info("🔧 FIXED LATEX ESCAPING (Segment \(index + 1)/\(totalSegments)):")
+                    AppLogger.ai.info("---FIXED JSON START---")
+                    AppLogger.ai.info(jsonString)
+                    AppLogger.ai.info("---FIXED JSON END---")
+
                     guard let data = jsonString.data(using: .utf8) else {
                         AppLogger.ai.error("Failed to convert JSON to data for segment \(index + 1)")
                         continue
@@ -249,11 +278,13 @@ Return ONLY the JSON object:
                     let segmentResult = try JSONDecoder().decode(SegmentAnalysisResult.self, from: data)
 
                     if segmentResult.type == "exercise", let exercise = segmentResult.exercise {
-                        AppLogger.ai.info("Found exercise #\(exercise.exerciseNumber) at Y: \(exercise.startY)-\(exercise.endY)")
+                        AppLogger.ai.info("✅ Found exercise #\(exercise.exerciseNumber) at Y: \(exercise.startY)-\(exercise.endY)")
                         allExercises.append(exercise)
+                    } else {
+                        AppLogger.ai.info("⏭️ Skipping segment \(index + 1) - not an exercise")
                     }
                 } catch {
-                    AppLogger.ai.error("Error analyzing segment \(index + 1)", error: error)
+                    AppLogger.ai.error("❌ Error analyzing segment \(index + 1)", error: error)
                     AppLogger.ai.info("Continuing with remaining segments...")
                     continue
                 }
@@ -548,7 +579,20 @@ Return ONLY valid JSON:
 
         Task {
             do {
+                AppLogger.ai.info("📤 SENDING TEXT-ONLY ANALYSIS PROMPT TO AI:")
+                AppLogger.ai.info("Prompt length: \(prompt.count) characters")
+                AppLogger.ai.info("Text to analyze length: \(text.count) characters")
+                AppLogger.ai.info("---PROMPT START---")
+                AppLogger.ai.info(prompt)
+                AppLogger.ai.info("---PROMPT END---")
+
                 let response = try await session.respond(to: prompt)
+
+                AppLogger.ai.info("📥 RECEIVED TEXT-ONLY ANALYSIS RESPONSE FROM AI:")
+                AppLogger.ai.info("Response length: \(response.content.count) characters")
+                AppLogger.ai.info("---RESPONSE START---")
+                AppLogger.ai.info(response.content)
+                AppLogger.ai.info("---RESPONSE END---")
 
                 var jsonString = response.content
 
@@ -565,9 +609,28 @@ Return ONLY valid JSON:
                 }
                 jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
 
+                AppLogger.ai.info("🧹 CLEANED JSON FOR TEXT-ONLY ANALYSIS:")
+                AppLogger.ai.info("---CLEANED JSON START---")
+                AppLogger.ai.info(jsonString)
+                AppLogger.ai.info("---CLEANED JSON END---")
+
+                // Fix LaTeX backslash escaping: \( -> \\(, \) -> \\), \[ -> \\[, \] -> \\]
+                // We need to escape backslashes that are part of LaTeX delimiters
+                jsonString = jsonString
+                    .replacingOccurrences(of: "\\(", with: "\\\\(")
+                    .replacingOccurrences(of: "\\)", with: "\\\\)")
+                    .replacingOccurrences(of: "\\[", with: "\\\\[")
+                    .replacingOccurrences(of: "\\]", with: "\\\\]")
+
+                AppLogger.ai.info("🔧 FIXED LATEX ESCAPING:")
+                AppLogger.ai.info("---FIXED JSON START---")
+                AppLogger.ai.info(jsonString)
+                AppLogger.ai.info("---FIXED JSON END---")
+
                 guard let data = jsonString.data(using: .utf8) else {
+                    AppLogger.ai.error("Failed to convert JSON string to data")
                     await MainActor.run {
-                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1))))
+                        completion(.failure(AIAnalysisError.parsingFailed(NSError(domain: "AIAnalysis", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert cleaned JSON to Data"]))))
                     }
                     return
                 }
@@ -586,8 +649,11 @@ Return ONLY valid JSON:
                     let inputType: String?
                 }
 
+                AppLogger.ai.info("🔍 ATTEMPTING TO DECODE JSON...")
                 let decoder = JSONDecoder()
                 let textResult = try decoder.decode(TextAnalysisResult.self, from: data)
+
+                AppLogger.ai.info("✅ Successfully decoded \(textResult.exercises.count) exercises from JSON")
 
                 // Convert to Exercise format with fake Y coordinates
                 let exercises = textResult.exercises.enumerated().map { index, textEx in
@@ -610,8 +676,29 @@ Return ONLY valid JSON:
                 await MainActor.run {
                     completion(.success(finalResult))
                 }
+            } catch let decodingError as DecodingError {
+                AppLogger.ai.error("❌ JSON Decoding Error in text-only analysis:")
+                switch decodingError {
+                case .dataCorrupted(let context):
+                    AppLogger.ai.error("  - Data corrupted at: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
+                    AppLogger.ai.error("  - Debug description: \(context.debugDescription)")
+                case .keyNotFound(let key, let context):
+                    AppLogger.ai.error("  - Key '\(key.stringValue)' not found at: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
+                    AppLogger.ai.error("  - Debug description: \(context.debugDescription)")
+                case .typeMismatch(let type, let context):
+                    AppLogger.ai.error("  - Type mismatch, expected \(type) at: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
+                    AppLogger.ai.error("  - Debug description: \(context.debugDescription)")
+                case .valueNotFound(let type, let context):
+                    AppLogger.ai.error("  - Value of type \(type) not found at: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
+                    AppLogger.ai.error("  - Debug description: \(context.debugDescription)")
+                @unknown default:
+                    AppLogger.ai.error("  - Unknown decoding error", error: decodingError)
+                }
+                await MainActor.run {
+                    completion(.failure(AIAnalysisError.parsingFailed(decodingError)))
+                }
             } catch {
-                AppLogger.ai.error("Text-only analysis failed", error: error)
+                AppLogger.ai.error("❌ Text-only analysis failed with non-decoding error", error: error)
                 await MainActor.run {
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }

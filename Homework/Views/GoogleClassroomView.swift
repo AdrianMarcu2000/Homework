@@ -449,6 +449,13 @@ struct AssignmentRowCompactView: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // Subject indicator - only show if analyzed
+            if let subject = assignmentWrapper.subject {
+                Image(systemName: subjectIcon(for: subject))
+                    .foregroundColor(.blue)
+                    .font(.body)
+            }
+
             // Status icon
             Image(systemName: assignmentWrapper.status.iconName)
                 .foregroundColor(Color(assignmentWrapper.status.color))
@@ -484,6 +491,30 @@ struct AssignmentRowCompactView: View {
             Task {
                 await assignmentWrapper.syncStatusWithGoogleClassroom()
             }
+        }
+    }
+
+    /// Returns an SF Symbol icon name for the given subject
+    private func subjectIcon(for subject: String) -> String {
+        switch subject.lowercased() {
+        case "mathematics", "math":
+            return "function"
+        case "science":
+            return "atom"
+        case "history":
+            return "clock"
+        case "english", "language":
+            return "book"
+        case "geography":
+            return "globe"
+        case "physics":
+            return "waveform.path"
+        case "chemistry":
+            return "flask"
+        case "biology":
+            return "leaf"
+        default:
+            return "graduationcap"
         }
     }
 }

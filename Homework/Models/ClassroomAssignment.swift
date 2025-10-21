@@ -66,6 +66,7 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
     @Published var downloadError: String?
     @Published var status: AssignmentStatus = .new
     @Published var isSyncingStatus: Bool = false
+    @Published var subject: String?
 
     var id: String {
         coursework.id
@@ -159,6 +160,10 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
            let answers = try? JSONDecoder().decode([String: Data].self, from: answersData) {
             self.exerciseAnswers = answers
         }
+
+        if let subject = defaults.string(forKey: "\(cacheKey)_subject") {
+            self.subject = subject
+        }
     }
 
     func saveToCache() {
@@ -175,6 +180,10 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
         if let answers = exerciseAnswers,
            let answersData = try? JSONEncoder().encode(answers) {
             defaults.set(answersData, forKey: "\(cacheKey)_answers")
+        }
+
+        if let subject = subject {
+            defaults.set(subject, forKey: "\(cacheKey)_subject")
         }
 
         // Force synchronize to ensure write completes immediately

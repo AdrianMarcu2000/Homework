@@ -419,6 +419,12 @@ struct AssignmentDetailView: View {
             let jsonData = try encoder.encode(analysis)
             if let jsonString = String(data: jsonData, encoding: .utf8) {
                 assignment.analysisJSON = jsonString
+
+                // Extract subject from the first exercise with a subject
+                if let subject = analysis.exercises.first(where: { $0.subject != nil })?.subject {
+                    assignment.subject = subject
+                }
+
                 assignment.saveToCache()
                 AppLogger.persistence.info("Analysis saved to cache - Exercises: \(analysis.exercises.count)")
             }

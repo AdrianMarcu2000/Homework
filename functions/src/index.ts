@@ -93,11 +93,11 @@ const analysisSchema = {
                     },
                     yStart: {
                         type: "INTEGER",
-                        description: "The MINIMUM Y coordinate associated with the visual boundary of this section."
+                        description: "The Y coordinate where this section STARTS on the page. Coordinate system: Y=0 is the TOP of the page, Y=1000 is the BOTTOM. This is the smaller Y value (closer to top)."
                     },
                     yEnd: {
                         type: "INTEGER",
-                        description: "The MAXIMUM Y coordinate associated with the visual boundary of this section."
+                        description: "The Y coordinate where this section ENDS on the page. Coordinate system: Y=0 is the TOP of the page, Y=1000 is the BOTTOM. This is the larger Y value (closer to bottom)."
                     }
                 },
                 required: ["type", "title", "content", "yStart", "yEnd"]
@@ -253,18 +253,19 @@ Use 'both' when:
 
 --- COORDINATE & CONTENT EXTRACTION INSTRUCTIONS ---
 1. Use the 'ocrJsonText' data ONLY for Y-coordinates to define the visual boundaries of each section.
-2. The 'yStart' must be the MINIMUM Y-coordinate of any text paragraph belonging to that section.
-3. The 'yEnd' must be the MAXIMUM Y-coordinate of any text paragraph belonging to that section.
-4. For the 'content' field: READ THE TEXT DIRECTLY FROM THE IMAGE. The OCR data may have errors, especially with:
+2. COORDINATE SYSTEM: Y=0 is at the TOP of the page, Y=1000 is at the BOTTOM (standard top-to-bottom reading order).
+3. The 'yStart' is where the section STARTS (top edge) - this is the SMALLER Y value.
+4. The 'yEnd' is where the section ENDS (bottom edge) - this is the LARGER Y value.
+5. For the 'content' field: READ THE TEXT DIRECTLY FROM THE IMAGE. The OCR data may have errors, especially with:
    - Mathematical symbols and notation (e.g., exponents, fractions, special operators)
    - Special characters and punctuation
    - Accented letters and non-English characters
    - Formatting and spacing
-5. IMPORTANT: Your 'content' must be the ACCURATE text you actually see in the image, NOT the OCR text. Correct all errors.
-6. For all mathematical content, you MUST use LaTeX notation. Enclose inline math expressions with \( and \). Enclose block math expressions with \[ and \]. For example: \(x^2 + y^2 = r^2\) or \[\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\]
-7. When creating the 'content', it is crucial that you preserve the original formatting and indentation of the exercise as seen in the image. This includes line breaks, spacing, and any other structural elements.
-8. Group related text blocks that belong to the same exercise based on proximity (Y-coordinates) and content continuity.
-9. Your output MUST strictly adhere to the provided JSON schema.`;;
+6. IMPORTANT: Your 'content' must be the ACCURATE text you actually see in the image, NOT the OCR text. Correct all errors.
+7. For all mathematical content, you MUST use LaTeX notation. Enclose inline math expressions with \( and \). Enclose block math expressions with \[ and \]. For example: \(x^2 + y^2 = r^2\) or \[\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\]
+8. When creating the 'content', it is crucial that you preserve the original formatting and indentation of the exercise as seen in the image. This includes line breaks, spacing, and any other structural elements.
+9. Group related text blocks that belong to the same exercise based on proximity (Y-coordinates) and content continuity.
+10. Your output MUST strictly adhere to the provided JSON schema.`;;
 
 
     // 2. Define the user prompt, combining the image and text data

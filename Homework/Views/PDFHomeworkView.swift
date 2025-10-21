@@ -26,38 +26,106 @@ struct PDFHomeworkView: View {
         pdfDocument?.pageCount ?? 0
     }
 
-    var currentPageAnalysis: PDFPageAnalysis? {
-        item.pdfPageAnalyses?.analysis(for: currentPage + 1)
+    // Fetch analyzed page items for this PDF
+    @FetchRequest private var pageItems: FetchedResults<Item>
+
+    init(item: Item) {
+        self.item = item
+        // Fetch all Items that belong to this PDF (using pdfParentID)
+        let pdfID = item.objectID.uriRepresentation().absoluteString
+        _pageItems = FetchRequest<Item>(
+            sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
+            predicate: NSPredicate(format: "pdfParentID == %@", pdfID)
+        )
+    }
+
+    var currentPageItem: Item? {
+        pageItems.first(where: { $0.pdfPageNumber == Int16(currentPage + 1) })
     }
 
     var body: some View {
         VStack(spacing: 0) {
             if let pdfDocument = pdfDocument {
-                // Show exercises view if page is analyzed
-                if let analysis = currentPageAnalysis {
-                    VStack(spacing: 0) {
-                        // Action buttons at the top (matching image homework style)
+                // Always show PDF with navigation
+                VStack(spacing: 0) {
+                    // Page navigation
+                    HStack(spacing: 12) {
+                        Button(action: previousPage) {
+                            Image(systemName: "chevron.left.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.blue)
+                        }
+                        .disabled(currentPage == 0)
+
+                        Spacer()
+
+                        HStack(spacing: 8) {
+                            Text("Page")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+
+                            TextField("", text: $jumpToPageText)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 50)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit {
+                                    jumpToPage()
+                                }
+                                .overlay(
+                                    Text(jumpToPageText.isEmpty ? "\(currentPage + 1)" : "")
+                                        .foregroundColor(.secondary)
+                                        .allowsHitTesting(false)
+                                )
+
+                            Text("of \(totalPages)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button(action: nextPage) {
+                            Image(systemName: "chevron.right.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.blue)
+                        }
+                        .disabled(currentPage >= totalPages - 1)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+
+                    // Show "View Exercises" button and re-analyze buttons if page is analyzed
+                    if let pageItem = currentPageItem, let analysis = pageItem.analysisResult {
                         HStack(spacing: 12) {
-                            // View Original button - shows the PDF page
-                            Button(action: {
-                                // Scroll to top to show PDF
-                            }) {
+                            // View Exercises button
+                            NavigationLink(destination:
+                                ScrollView {
+                                    LessonsAndExercisesView(
+                                        analysis: analysis,
+                                        homeworkItem: pageItem
+                                    )
+                                    .padding()
+                                }
+                                .navigationTitle("Page \(currentPage + 1) Exercises")
+                                .navigationBarTitleDisplayMode(.inline)
+                            ) {
                                 VStack(spacing: 6) {
-                                    Image(systemName: "doc.fill")
+                                    Image(systemName: "list.bullet.rectangle")
                                         .font(.title2)
-                                    Text("View Page")
+                                    Text("View Exercises")
                                         .font(.caption)
                                         .fontWeight(.medium)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundColor(.blue)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
                                 .cornerRadius(10)
                             }
                             .buttonStyle(.plain)
 
-                            // Analyze with Apple Intelligence button
+                            // Re-analyze with Apple Intelligence button
                             if AIAnalysisService.shared.isModelAvailable {
                                 Button(action: {
                                     analyzePageWithMethod(useCloud: false)
@@ -65,7 +133,7 @@ struct PDFHomeworkView: View {
                                     VStack(spacing: 6) {
                                         Image(systemName: "apple.logo")
                                             .font(.title2)
-                                        Text("Apple AI")
+                                        Text("Re-analyze (Apple AI)")
                                             .font(.caption)
                                             .fontWeight(.medium)
                                     }
@@ -79,7 +147,7 @@ struct PDFHomeworkView: View {
                                 .disabled(isAnalyzing)
                             }
 
-                            // Analyze with Google Gemini button (if cloud enabled)
+                            // Re-analyze with Google Gemini button (if cloud enabled)
                             if useCloudAnalysis {
                                 Button(action: {
                                     analyzePageWithMethod(useCloud: true)
@@ -87,7 +155,7 @@ struct PDFHomeworkView: View {
                                     VStack(spacing: 6) {
                                         Image(systemName: "cloud.fill")
                                             .font(.title2)
-                                        Text("Google AI")
+                                        Text("Re-analyze (Google AI)")
                                             .font(.caption)
                                             .fontWeight(.medium)
                                     }
@@ -102,222 +170,98 @@ struct PDFHomeworkView: View {
                             }
                         }
                         .padding(.horizontal)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
-
-                        Divider()
-
-                        // Exercises content
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 20) {
-                                // Page navigation header
-                                HStack(spacing: 12) {
-                                    Button(action: previousPage) {
-                                        Image(systemName: "chevron.left.circle.fill")
-                                            .font(.title2)
-                                            .foregroundColor(.blue)
-                                    }
-                                    .disabled(currentPage == 0)
-
-                                    Spacer()
-
-                                    HStack(spacing: 8) {
-                                        Text("Page")
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
-
-                                        TextField("", text: $jumpToPageText)
-                                            .keyboardType(.numberPad)
-                                            .multilineTextAlignment(.center)
-                                            .frame(width: 50)
-                                            .textFieldStyle(.roundedBorder)
-                                            .onSubmit {
-                                                jumpToPage()
-                                            }
-                                            .overlay(
-                                                Text(jumpToPageText.isEmpty ? "\(currentPage + 1)" : "")
-                                                    .foregroundColor(.secondary)
-                                                    .allowsHitTesting(false)
-                                            )
-
-                                        Text("of \(totalPages)")
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    Button(action: nextPage) {
-                                        Image(systemName: "chevron.right.circle.fill")
-                                            .font(.title2)
-                                            .foregroundColor(.blue)
-                                    }
-                                    .disabled(currentPage >= totalPages - 1)
-                                }
-                                .padding(.horizontal)
-
-                                // PDF page preview
-                                PDFPageView(
-                                    document: pdfDocument,
-                                    currentPage: $currentPage,
-                                    height: 500
-                                )
-                                .background(Color.white)
-                                .cornerRadius(12)
-                                .shadow(radius: 5)
-                                .padding(.horizontal)
-
-                                // Exercises
-                                ForEach(analysis.analysisResult.exercises, id: \.exerciseNumber) { exercise in
-                                    PDFExerciseCard(
-                                        exercise: exercise,
-                                        item: item,
-                                        pageNumber: currentPage + 1
-                                    )
-                                    .padding(.horizontal)
-                                }
-                            }
-                            .padding(.vertical)
-                        }
+                        .padding(.bottom, 12)
                     }
-                } else {
-                    // Page not analyzed - show full PDF with analyze buttons
-                    VStack(spacing: 0) {
-                        // Action buttons at the top
-                        HStack(spacing: 12) {
-                            // Analyze with Apple Intelligence button
-                            if AIAnalysisService.shared.isModelAvailable {
-                                Button(action: {
-                                    analyzePageWithMethod(useCloud: false)
-                                }) {
-                                    VStack(spacing: 6) {
-                                        Image(systemName: "apple.logo")
-                                            .font(.title2)
-                                        Text("Apple AI")
-                                            .font(.caption)
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.purple.opacity(0.1))
-                                    .foregroundColor(.purple)
-                                    .cornerRadius(10)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isAnalyzing)
-                            }
 
-                            // Analyze with Google Gemini button (if cloud enabled)
-                            if useCloudAnalysis {
-                                Button(action: {
-                                    analyzePageWithMethod(useCloud: true)
-                                }) {
-                                    VStack(spacing: 6) {
-                                        Image(systemName: "cloud.fill")
-                                            .font(.title2)
-                                        Text("Google AI")
-                                            .font(.caption)
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.green.opacity(0.1))
-                                    .foregroundColor(.green)
-                                    .cornerRadius(10)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isAnalyzing)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
+                    Divider()
 
-                        Divider()
-
-                        // Full page PDF view
-                        ZStack {
-                            VStack(spacing: 0) {
-                                // Page navigation
+                    // PDF view with analysis buttons
+                    ZStack {
+                        VStack(spacing: 0) {
+                            // Analyze buttons (only shown if not analyzed)
+                            if currentPageItem == nil {
                                 HStack(spacing: 12) {
-                                    Button(action: previousPage) {
-                                        Image(systemName: "chevron.left.circle.fill")
-                                            .font(.title2)
-                                            .foregroundColor(.blue)
-                                    }
-                                    .disabled(currentPage == 0)
-
-                                    Spacer()
-
-                                    HStack(spacing: 8) {
-                                        Text("Page")
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
-
-                                        TextField("", text: $jumpToPageText)
-                                            .keyboardType(.numberPad)
-                                            .multilineTextAlignment(.center)
-                                            .frame(width: 50)
-                                            .textFieldStyle(.roundedBorder)
-                                            .onSubmit {
-                                                jumpToPage()
+                                    // Analyze with Apple Intelligence button
+                                    if AIAnalysisService.shared.isModelAvailable {
+                                        Button(action: {
+                                            analyzePageWithMethod(useCloud: false)
+                                        }) {
+                                            VStack(spacing: 6) {
+                                                Image(systemName: "apple.logo")
+                                                    .font(.title2)
+                                                Text("Apple AI")
+                                                    .font(.caption)
+                                                    .fontWeight(.medium)
                                             }
-                                            .overlay(
-                                                Text(jumpToPageText.isEmpty ? "\(currentPage + 1)" : "")
-                                                    .foregroundColor(.secondary)
-                                                    .allowsHitTesting(false)
-                                            )
-
-                                        Text("of \(totalPages)")
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(Color.purple.opacity(0.1))
+                                            .foregroundColor(.purple)
+                                            .cornerRadius(10)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(isAnalyzing)
                                     }
 
-                                    Spacer()
-
-                                    Button(action: nextPage) {
-                                        Image(systemName: "chevron.right.circle.fill")
-                                            .font(.title2)
-                                            .foregroundColor(.blue)
+                                    // Analyze with Google Gemini button (if cloud enabled)
+                                    if useCloudAnalysis {
+                                        Button(action: {
+                                            analyzePageWithMethod(useCloud: true)
+                                        }) {
+                                            VStack(spacing: 6) {
+                                                Image(systemName: "cloud.fill")
+                                                    .font(.title2)
+                                                Text("Google AI")
+                                                    .font(.caption)
+                                                    .fontWeight(.medium)
+                                            }
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(Color.green.opacity(0.1))
+                                            .foregroundColor(.green)
+                                            .cornerRadius(10)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(isAnalyzing)
                                     }
-                                    .disabled(currentPage >= totalPages - 1)
                                 }
                                 .padding(.horizontal)
-                                .padding(.vertical, 12)
-
-                                // PDF fills remaining space
-                                PDFPageView(
-                                    document: pdfDocument,
-                                    currentPage: $currentPage
-                                )
-                                .background(Color.white)
-                                .cornerRadius(12)
-                                .shadow(radius: 5)
-                                .padding(.horizontal)
-                                .padding(.bottom, 20)
+                                .padding(.top, 12)
+                                .padding(.bottom, 8)
                             }
 
-                            // Analysis progress overlay
-                            if isAnalyzing {
-                                Color.black.opacity(0.4)
-                                    .edgesIgnoringSafeArea(.all)
-                                VStack {
-                                    if let progress = analysisProgress {
-                                        ProgressView(value: Double(progress.current), total: Double(progress.total))
-                                            .progressViewStyle(.linear)
-                                            .frame(maxWidth: 300)
-                                        Text("Analyzing segment \(progress.current) of \(progress.total)")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                    } else {
-                                        ProgressView()
-                                            .scaleEffect(1.5)
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        Text("Analyzing...")
-                                            .font(.headline)
-                                            .foregroundColor(.white)
-                                            .padding(.top)
-                                    }
+                            // PDF fills remaining space
+                            PDFPageView(
+                                document: pdfDocument,
+                                currentPage: $currentPage
+                            )
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .shadow(radius: 5)
+                            .padding(.horizontal)
+                            .padding(.bottom, 20)
+                        }
+
+                        // Analysis progress overlay
+                        if isAnalyzing {
+                            Color.black.opacity(0.4)
+                                .edgesIgnoringSafeArea(.all)
+                            VStack {
+                                if let progress = analysisProgress {
+                                    ProgressView(value: Double(progress.current), total: Double(progress.total))
+                                        .progressViewStyle(.linear)
+                                        .frame(maxWidth: 300)
+                                    Text("Analyzing segment \(progress.current) of \(progress.total)")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white)
+                                } else {
+                                    ProgressView()
+                                        .scaleEffect(1.5)
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    Text("Analyzing...")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                        .padding(.top)
                                 }
                             }
                         }
@@ -402,6 +346,7 @@ struct PDFHomeworkView: View {
 
         let shouldUseCloud = useCloud
         let pageNum = currentPage
+        let pdfID = item.objectID.uriRepresentation().absoluteString
 
         Task.detached(priority: .background) {
             // Render page as image
@@ -456,16 +401,41 @@ struct PDFHomeworkView: View {
 
                 switch analysisResult {
                 case .success(let analysis):
-                    // Save analysis for this page
-                    let pageAnalysis = PDFPageAnalysis(
-                        pageNumber: pageNum + 1,
-                        analysisResult: analysis,
-                        analysisMethod: shouldUseCloud ? AnalysisMethod.cloudAI.rawValue : AnalysisMethod.appleAI.rawValue
-                    )
+                    // Convert page image to JPEG data for storage
+                    guard let imageData = pageImage.jpegData(compressionQuality: 0.8) else {
+                        AppLogger.image.error("Failed to convert PDF page image to JPEG")
+                        return
+                    }
 
-                    var pdfAnalysis = item.pdfPageAnalyses ?? PDFHomeworkAnalysis()
-                    pdfAnalysis.setAnalysis(pageAnalysis, for: pageNum + 1)
-                    item.pdfPageAnalyses = pdfAnalysis
+                    // Extract full text for the page
+                    let fullText = ocrBlocks.map { $0.text }.joined(separator: "\n")
+
+                    // Check if we already have an Item for this page (re-analysis)
+                    if let existingPageItem = currentPageItem {
+                        // Update existing item
+                        existingPageItem.imageData = imageData
+                        existingPageItem.extractedText = fullText
+                        existingPageItem.analysisMethod = shouldUseCloud ? AnalysisMethod.cloudAI.rawValue : AnalysisMethod.appleAI.rawValue
+
+                        if let analysisData = try? JSONEncoder().encode(analysis),
+                           let analysisString = String(data: analysisData, encoding: .utf8) {
+                            existingPageItem.analysisJSON = analysisString
+                        }
+                    } else {
+                        // Create new Item for this page
+                        let pageItem = Item(context: viewContext)
+                        pageItem.timestamp = Date()
+                        pageItem.imageData = imageData
+                        pageItem.extractedText = fullText
+                        pageItem.pdfParentID = pdfID
+                        pageItem.pdfPageNumber = Int16(pageNum + 1)
+                        pageItem.analysisMethod = shouldUseCloud ? AnalysisMethod.cloudAI.rawValue : AnalysisMethod.appleAI.rawValue
+
+                        if let analysisData = try? JSONEncoder().encode(analysis),
+                           let analysisString = String(data: analysisData, encoding: .utf8) {
+                            pageItem.analysisJSON = analysisString
+                        }
+                    }
 
                     do {
                         try viewContext.save()
@@ -575,3 +545,4 @@ class PDFViewController: UIViewController {
         }
     }
 }
+

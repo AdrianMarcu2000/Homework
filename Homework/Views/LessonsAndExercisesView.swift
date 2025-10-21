@@ -8,6 +8,7 @@
 import SwiftUI
 import CoreData
 import PencilKit
+import OSLog
 
 /// A view that displays analyzed exercises from homework
 struct LessonsAndExercisesView: View {
@@ -31,7 +32,21 @@ struct LessonsAndExercisesView: View {
                         .font(.title3)
                         .fontWeight(.bold)
 
-                    ForEach(analysis.exercises, id: \.self) { exercise in
+                    // Log exercise coordinates for debugging
+                    let _ = {
+                        AppLogger.ui.info("📝 Exercise coordinates:")
+                        for exercise in analysis.exercises {
+                            AppLogger.ui.info("  Exercise #\(exercise.exerciseNumber): startY=\(String(format: "%.3f", exercise.startY)), endY=\(String(format: "%.3f", exercise.endY))")
+                        }
+                        AppLogger.ui.info("📝 After sorting by startY ascending:")
+                        for exercise in analysis.exercises.sorted(by: { $0.startY < $1.startY }) {
+                            AppLogger.ui.info("  Exercise #\(exercise.exerciseNumber): startY=\(String(format: "%.3f", exercise.startY)), endY=\(String(format: "%.3f", exercise.endY))")
+                        }
+                    }()
+
+                    // Sort exercises by startY ascending (top to bottom on page)
+                    // Cloud analysis returns normalized coordinates where lower startY = higher on page (top to bottom reading order)
+                    ForEach(analysis.exercises.sorted { $0.startY < $1.startY }, id: \.self) { exercise in
                         ExerciseCard(exercise: exercise, homeworkItem: homeworkItem)
                     }
                 }

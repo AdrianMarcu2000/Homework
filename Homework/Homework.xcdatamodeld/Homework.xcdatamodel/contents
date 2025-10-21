@@ -7,7 +7,8 @@
         <attribute name="extractedText" optional="YES" attributeType="String"/>
         <attribute name="imageData" optional="YES" attributeType="Binary" allowsExternalBinaryDataStorage="YES"/>
         <attribute name="pdfFilePath" optional="YES" attributeType="String"/>
-        <attribute name="pdfPageAnalysesJSON" optional="YES" attributeType="String"/>
+        <attribute name="pdfPageNumber" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="pdfParentID" optional="YES" attributeType="String"/>
         <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
     </entity>
 </model>

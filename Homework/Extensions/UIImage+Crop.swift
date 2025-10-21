@@ -9,11 +9,11 @@ import UIKit
 
 extension UIImage {
     /// Crops the image based on normalized Y coordinates (0.0 to 1.0)
-    /// where 0.0 is the top and 1.0 is the bottom of the image.
+    /// where 0.0 is the TOP and 1.0 is the BOTTOM (standard top-to-bottom reading order).
     ///
     /// - Parameters:
-    ///   - startY: Normalized Y coordinate where the crop should start (0.0 = top)
-    ///   - endY: Normalized Y coordinate where the crop should end (1.0 = bottom)
+    ///   - startY: Normalized Y coordinate where the crop should start (0.0 = top, 1.0 = bottom). This is the top edge.
+    ///   - endY: Normalized Y coordinate where the crop should end (0.0 = top, 1.0 = bottom). This is the bottom edge.
     ///   - padding: Additional padding to add around the crop area (default: 0.02 = 2%)
     /// - Returns: Cropped UIImage, or nil if cropping fails
     func crop(startY: Double, endY: Double, padding: Double = 0.02) -> UIImage? {
@@ -22,10 +22,14 @@ extension UIImage {
         let imageHeight = CGFloat(cgImage.height)
         let imageWidth = CGFloat(cgImage.width)
 
-        // Convert normalized coordinates to pixel coordinates
-        // Note: Vision framework uses bottom-left origin, so we need to flip Y
-        let cropStartY = CGFloat(1.0 - endY) * imageHeight
-        let cropEndY = CGFloat(1.0 - startY) * imageHeight
+        // Coordinate system: Y=0 is top, Y=1 is bottom (matches UIKit/CGImage top-left origin)
+        // startY is the top edge (smaller value), endY is the bottom edge (larger value)
+
+        let topY = min(startY, endY)  // Ensure top is the smaller value
+        let bottomY = max(startY, endY)  // Ensure bottom is the larger value
+
+        let cropStartY = CGFloat(topY) * imageHeight  // Top of crop in pixels
+        let cropEndY = CGFloat(bottomY) * imageHeight  // Bottom of crop in pixels
 
         // Calculate height and apply padding
         let paddingPixels = CGFloat(padding) * imageHeight

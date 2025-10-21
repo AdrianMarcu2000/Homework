@@ -46,38 +46,8 @@ extension Item: AnalyzableHomework {
         return try PDFStorageService.shared.loadPDF(from: filePath)
     }
 
-    /// Get PDF page analyses (decoded from JSON)
-    var pdfPageAnalyses: PDFHomeworkAnalysis? {
-        get {
-            guard let json = pdfPageAnalysesJSON else { return nil }
-            let decoder = JSONDecoder()
-            return try? decoder.decode(PDFHomeworkAnalysis.self, from: Data(json.utf8))
-        }
-        set {
-            if let newValue = newValue {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = .prettyPrinted
-                if let data = try? encoder.encode(newValue),
-                   let jsonString = String(data: data, encoding: .utf8) {
-                    pdfPageAnalysesJSON = jsonString
-                }
-            } else {
-                pdfPageAnalysesJSON = nil
-            }
-        }
-    }
-
     /// The analysis status of the homework item
     public var analysisStatus: AnalysisStatus {
-        // For PDFs, check if any pages have been analyzed
-        if isPDF {
-            if let analyses = pdfPageAnalyses, !analyses.pageAnalyses.isEmpty {
-                return .completed
-            }
-            return .notStarted
-        }
-
-        // For regular image homework
         if analysisJSON == "inProgress" {
             return .inProgress
         } else if analysisJSON == "failed" {

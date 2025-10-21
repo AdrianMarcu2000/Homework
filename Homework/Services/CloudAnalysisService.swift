@@ -356,15 +356,16 @@ class CloudAnalysisService {
                 // Log exercise details with corrected content
                 let subjectStr = section.subject ?? "N/A"
                 let inputTypeStr = section.inputType ?? "N/A"
-                AppLogger.cloud.info("Exercise #\(exerciseNumber): Subject=\(subjectStr), Input=\(inputTypeStr), Type=\(exercise.type)")
+                AppLogger.cloud.info("Exercise #\(exerciseNumber): Subject=\(subjectStr), Input=\(inputTypeStr), Type=\(exercise.type), startY=\(String(format: "%.3f", startY)), endY=\(String(format: "%.3f", endY))")
                 AppLogger.cloud.debug("Content (from LLM): \(section.content.prefix(100))...")
             } else {
                 AppLogger.cloud.debug("Skipping section type: \(section.type)")
             }
         }
 
-        // Sort by Y position (descending for top-to-bottom order)
-        let sortedExercises = exercises.sorted { $0.startY > $1.startY }
+        // Sort by Y position (ascending for top-to-bottom order)
+        // New coordinate system: Y=0 is top, Y=1000 is bottom, so lower startY = higher on page
+        let sortedExercises = exercises.sorted { $0.startY < $1.startY }
         AppLogger.cloud.info("Successfully converted to \(sortedExercises.count) exercises")
 
         return AIAnalysisService.AnalysisResult(exercises: sortedExercises)

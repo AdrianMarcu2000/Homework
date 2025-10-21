@@ -27,8 +27,57 @@ public enum AnalysisMethod: String {
 /// Extension to make Item conform to AnalyzableHomework protocol
 extension Item: AnalyzableHomework {
 
+    /// Whether this homework is a PDF (has pdfFilePath)
+    var isPDF: Bool {
+        return pdfFilePath != nil && !pdfFilePath!.isEmpty
+    }
+
+    /// Get the full file URL for the stored PDF
+    var pdfFileURL: URL? {
+        guard let filePath = pdfFilePath else { return nil }
+        return try? PDFStorageService.shared.getFileURL(for: filePath)
+    }
+
+    /// Load the PDF data from storage
+    func loadPDFData() throws -> Data {
+        guard let filePath = pdfFilePath else {
+            throw PDFStorageError.invalidPath
+        }
+        return try PDFStorageService.shared.loadPDF(from: filePath)
+    }
+
+    /// Get PDF page analyses (decoded from JSON)
+    var pdfPageAnalyses: PDFHomeworkAnalysis? {
+        get {
+            guard let json = pdfPageAnalysesJSON else { return nil }
+            let decoder = JSONDecoder()
+            return try? decoder.decode(PDFHomeworkAnalysis.self, from: Data(json.utf8))
+        }
+        set {
+            if let newValue = newValue {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .prettyPrinted
+                if let data = try? encoder.encode(newValue),
+                   let jsonString = String(data: data, encoding: .utf8) {
+                    pdfPageAnalysesJSON = jsonString
+                }
+            } else {
+                pdfPageAnalysesJSON = nil
+            }
+        }
+    }
+
     /// The analysis status of the homework item
     public var analysisStatus: AnalysisStatus {
+        // For PDFs, check if any pages have been analyzed
+        if isPDF {
+            if let analyses = pdfPageAnalyses, !analyses.pageAnalyses.isEmpty {
+                return .completed
+            }
+            return .notStarted
+        }
+
+        // For regular image homework
         if analysisJSON == "inProgress" {
             return .inProgress
         } else if analysisJSON == "failed" {

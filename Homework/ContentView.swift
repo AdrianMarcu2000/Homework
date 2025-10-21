@@ -98,6 +98,7 @@ private struct ContentViewInternal: View {
                         onTakePhoto: viewModel.selectCamera,
                         onChooseFromLibrary: viewModel.selectPhotoLibrary,
                         onLoadFile: viewModel.selectDocumentPicker,
+                        onLoadPDF: viewModel.selectPDFPicker,
                         selectedItem: $selectedItem,
                         viewModel: viewModel
                     )
@@ -115,8 +116,14 @@ private struct ContentViewInternal: View {
             Group {
                 if selectedTab == .myHomework {
                     if let item = selectedItem {
-                        HomeworkExercisesDetailView(item: item, viewModel: viewModel)
-                            .environment(\.managedObjectContext, viewContext)
+                        // Show PDF viewer for PDF homework, regular view for image homework
+                        if item.isPDF {
+                            PDFHomeworkView(item: item)
+                                .environment(\.managedObjectContext, viewContext)
+                        } else {
+                            HomeworkExercisesDetailView(item: item, viewModel: viewModel)
+                                .environment(\.managedObjectContext, viewContext)
+                        }
                     } else {
                         // Empty state for homework
                         VStack(spacing: 16) {
@@ -164,9 +171,17 @@ private struct ContentViewInternal: View {
         .sheet(isPresented: $viewModel.showDocumentPicker) {
             DocumentPicker(selectedImage: $viewModel.selectedImage)
         }
+        .sheet(isPresented: $viewModel.showPDFPicker) {
+            PDFPicker(selectedPDFData: $viewModel.selectedPDFData)
+        }
         .onChange(of: viewModel.selectedImage) { oldValue, newValue in
             if let image = newValue {
                 viewModel.performOCR(on: image)
+            }
+        }
+        .onChange(of: viewModel.selectedPDFData) { oldValue, newValue in
+            if newValue != nil {
+                viewModel.processPDF()
             }
         }
         .onReceive(viewModel.$newlyCreatedItem) { newItem in

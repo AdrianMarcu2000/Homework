@@ -34,6 +34,9 @@ struct HomeworkListView: View {
     /// Callback triggered when the load file button is tapped
     var onLoadFile: () -> Void
 
+    /// Callback triggered when the load PDF button is tapped
+    var onLoadPDF: () -> Void
+
     /// Binding to the currently selected item
     @Binding var selectedItem: Item?
 
@@ -141,6 +144,13 @@ struct HomeworkListView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: onLoadFile) {
                         Label("Load File", systemImage: "folder")
+                    }
+                    .labelStyle(.iconOnly)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: onLoadPDF) {
+                        Label("Load PDF", systemImage: "doc.fill")
                     }
                     .labelStyle(.iconOnly)
                 }
@@ -631,6 +641,7 @@ private let itemFormatter: DateFormatter = {
             onTakePhoto: {},
             onChooseFromLibrary: {},
             onLoadFile: {},
+            onLoadPDF: {},
             selectedItem: .constant(nil),
             viewModel: mockViewModel
         )

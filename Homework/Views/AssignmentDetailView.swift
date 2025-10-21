@@ -12,7 +12,7 @@ import OSLog
 
 /// View for displaying and analyzing a Google Classroom assignment
 struct AssignmentDetailView: View {
-    @StateObject var assignment: ClassroomAssignment
+    @ObservedObject var assignment: ClassroomAssignment
     @State private var isAnalyzing = false
     @State private var isReanalyzing = false
     @State private var analysisError: String?

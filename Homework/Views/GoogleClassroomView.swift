@@ -14,10 +14,12 @@ struct GoogleClassroomView: View {
     @StateObject private var authService = GoogleAuthService.shared
     @State private var courses: [ClassroomCourse] = []
     @State private var courseworkByID: [String: [ClassroomCoursework]] = [:]
+    @State private var assignments: [String: ClassroomAssignment] = [:]
     @State private var expandedCourses: Set<String> = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSettings = false
+    @State private var statusFilters: Set<AssignmentStatus> = Set(AssignmentStatus.allCases)
 
     @Binding var selectedCourse: ClassroomCourse?
     @Binding var selectedAssignment: ClassroomAssignment?
@@ -33,6 +35,57 @@ struct GoogleClassroomView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if authService.isSignedIn && !courses.isEmpty {
+                    Menu {
+                        Button(action: {
+                            if statusFilters.isEmpty {
+                                statusFilters = Set(AssignmentStatus.allCases)
+                            } else {
+                                statusFilters.removeAll()
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: statusFilters.isEmpty ? "checkmark.square" : "square")
+                                Text(statusFilters.isEmpty ? "Select All" : "Clear All")
+                            }
+                        }
+
+                        Divider()
+
+                        ForEach(AssignmentStatus.allCases, id: \.self) { status in
+                            Button(action: {
+                                if statusFilters.contains(status) {
+                                    statusFilters.remove(status)
+                                } else {
+                                    statusFilters.insert(status)
+                                }
+                                AppLogger.ui.info("User toggled filter: \(status.displayName)")
+                            }) {
+                                HStack {
+                                    Image(systemName: statusFilters.contains(status) ? "checkmark.square.fill" : "square")
+                                        .foregroundColor(Color(status.color))
+                                    Image(systemName: status.iconName)
+                                        .foregroundColor(Color(status.color))
+                                    Text(status.displayName)
+                                        .foregroundColor(Color(status.color))
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                            if !statusFilters.isEmpty {
+                                Text("\(statusFilters.count)")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                            }
+                        }
+                    }
+                    .help("Filter by status")
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: { showSettings = true }) {
                     Label("Settings", systemImage: "gearshape")
@@ -123,6 +176,8 @@ struct GoogleClassroomView: View {
                                 course: course,
                                 isExpanded: expandedCourses.contains(course.id),
                                 coursework: courseworkByID[course.id] ?? [],
+                                statusFilters: statusFilters,
+                                assignments: $assignments,
                                 onToggle: {
                                     toggleCourse(course)
                                 },
@@ -271,10 +326,56 @@ struct CourseSection: View {
     let course: ClassroomCourse
     let isExpanded: Bool
     let coursework: [ClassroomCoursework]
+    let statusFilters: Set<AssignmentStatus>
+    @Binding var assignments: [String: ClassroomAssignment]
     let onToggle: () -> Void
     let onSelectAssignment: (ClassroomAssignment) -> Void
 
+    // Helper to get or create assignment wrapper
+    private func getOrCreateAssignment(for courseworkItem: ClassroomCoursework) -> ClassroomAssignment {
+        if let existing = assignments[courseworkItem.id] {
+            return existing
+        } else {
+            let newAssignment = ClassroomAssignment(coursework: courseworkItem, courseName: course.name)
+            DispatchQueue.main.async {
+                if assignments[courseworkItem.id] == nil {
+                    assignments[courseworkItem.id] = newAssignment
+                    Task {
+                        await newAssignment.syncStatusWithGoogleClassroom()
+                    }
+                }
+            }
+            return newAssignment
+        }
+    }
+
+    // Filter coursework by status
+    private var filteredCoursework: [ClassroomCoursework] {
+        guard !statusFilters.isEmpty else { return [] }
+
+        return coursework.filter { courseworkItem in
+            if let assignment = assignments[courseworkItem.id] {
+                return statusFilters.contains(assignment.status)
+            } else {
+                // Create assignment asynchronously, show initially (will filter after sync)
+                let _ = getOrCreateAssignment(for: courseworkItem)
+                return true
+            }
+        }
+    }
+
+    // Computed properties to avoid state modification warnings
+    private var emptyStateIcon: String {
+        statusFilters.isEmpty ? "line.3.horizontal.decrease.circle.slash" : "checkmark.circle"
+    }
+
+    private var emptyStateText: String {
+        statusFilters.isEmpty ? "Select a status filter" : "No matching assignments"
+    }
+
     var body: some View {
+        let filtered = filteredCoursework
+
         DisclosureGroup(
             isExpanded: Binding(
                 get: { isExpanded },
@@ -282,31 +383,29 @@ struct CourseSection: View {
             )
         ) {
             // Coursework items
-            if coursework.isEmpty {
+            if filtered.isEmpty {
                 HStack {
-                    Image(systemName: "checkmark.circle")
+                    Image(systemName: emptyStateIcon)
                         .foregroundColor(.secondary)
                         .font(.caption)
-                    Text("No assignments")
+                    Text(emptyStateText)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
                 .padding(.leading, 20)
             } else {
-                ForEach(coursework.sorted(by: { (a, b) -> Bool in
+                ForEach(filtered.sorted(by: { (a, b) -> Bool in
                     // Sort by due date (most urgent first)
                     guard let dateA = a.dueDate?.date, let dateB = b.dueDate?.date else {
                         return false
                     }
                     return dateA < dateB
-                })) { assignment in
+                })) { courseworkItem in
                     Button(action: {
-                        onSelectAssignment(ClassroomAssignment(
-                            coursework: assignment,
-                            courseName: course.name
-                        ))
+                        let assignment = getOrCreateAssignment(for: courseworkItem)
+                        onSelectAssignment(assignment)
                     }) {
-                        AssignmentRowCompact(assignment: assignment)
+                        AssignmentRowCompactView(assignmentWrapper: getOrCreateAssignment(for: courseworkItem))
                     }
                     .buttonStyle(.plain)
                 }
@@ -345,21 +444,22 @@ struct CourseRowCompact: View {
 
 // MARK: - Compact Assignment Row
 
-struct AssignmentRowCompact: View {
-    let assignment: ClassroomCoursework
+struct AssignmentRowCompactView: View {
+    @ObservedObject var assignmentWrapper: ClassroomAssignment
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "doc.text")
-                .foregroundColor(.green)
+            // Status icon
+            Image(systemName: assignmentWrapper.status.iconName)
+                .foregroundColor(Color(assignmentWrapper.status.color))
                 .font(.body)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(assignment.title)
+                Text(assignmentWrapper.coursework.title)
                     .font(.subheadline)
                     .lineLimit(1)
 
-                if let dueDate = assignment.dueDate?.date {
+                if let dueDate = assignmentWrapper.coursework.dueDate?.date {
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
                             .font(.caption2)
@@ -371,9 +471,20 @@ struct AssignmentRowCompact: View {
             }
 
             Spacer()
+
+            // Sync indicator
+            if assignmentWrapper.isSyncingStatus {
+                ProgressView()
+                    .scaleEffect(0.7)
+            }
         }
         .padding(.vertical, 2)
         .padding(.leading, 20)
+        .onAppear {
+            Task {
+                await assignmentWrapper.syncStatusWithGoogleClassroom()
+            }
+        }
     }
 }
 

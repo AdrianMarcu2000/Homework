@@ -11,14 +11,13 @@ import OSLog
 
 /// View for assembling and displaying homework submission before turning in
 struct HomeworkSubmissionView: View {
-    let assignment: ClassroomAssignment
+    @ObservedObject var assignment: ClassroomAssignment
     var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var isSubmitting = false
     @State private var submitError: String?
     @State private var showSuccessAlert = false
     @State private var driveFileId: String?
-    @State private var submissionState: String?
     @State private var showClassroomInApp = false
 
     private var exercisesWithAnswers: [(exercise: AIAnalysisService.Exercise, answer: Data?)] {
@@ -33,6 +32,28 @@ struct HomeworkSubmissionView: View {
 
     private var hasAnyAnswers: Bool {
         exercisesWithAnswers.contains { $0.answer != nil }
+    }
+
+    // Can submit if status allows modification (NEW, CREATED, or RECLAIMED_BY_STUDENT)
+    private var canSubmit: Bool {
+        switch assignment.status {
+        case .new, .created, .reclaimedByStudent:
+            return true
+        case .turnedIn, .returned:
+            return false
+        }
+    }
+
+    private var submitButtonText: String {
+        if isSubmitting {
+            return "Turning In..."
+        } else if assignment.status == .turnedIn {
+            return "Already Turned In"
+        } else if assignment.status == .returned {
+            return "Returned by Teacher"
+        } else {
+            return "Turn In"
+        }
     }
 
     var body: some View {
@@ -70,21 +91,23 @@ struct HomeworkSubmissionView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 
-                        // Submission state indicator
-                        if let state = submissionState {
-                            HStack(spacing: 6) {
-                                Image(systemName: stateIcon(for: state))
-                                    .font(.caption)
-                                Text("Status: \(stateDisplayName(for: state))")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
+                        // Submission status indicator
+                        HStack(spacing: 6) {
+                            if assignment.isSyncingStatus {
+                                ProgressView()
+                                    .scaleEffect(0.7)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(stateColor(for: state).opacity(0.2))
-                            .foregroundColor(stateColor(for: state))
-                            .cornerRadius(8)
+                            Image(systemName: assignment.status.iconName)
+                                .font(.caption)
+                            Text("Status: \(assignment.status.displayName)")
+                                .font(.caption)
+                                .fontWeight(.medium)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(assignment.status.color).opacity(0.2))
+                        .foregroundColor(Color(assignment.status.color))
+                        .cornerRadius(8)
                     }
                     .padding()
                     .frame(maxWidth: .infinity)
@@ -148,22 +171,25 @@ struct HomeworkSubmissionView: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .scaleEffect(0.8)
-                                Text("Turning In...")
                             } else {
-                                Image(systemName: "paperplane.fill")
-                                Text("Turn In")
+                                Image(systemName: assignment.status == .turnedIn ? "checkmark.circle.fill" : "paperplane.fill")
                             }
+                            Text(submitButtonText)
                         }
                         .font(.headline)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(hasAnyAnswers ? LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing) : LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing))
+                        .background(
+                            canSubmit && hasAnyAnswers
+                                ? LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing)
+                                : LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing)
+                        )
                         .cornerRadius(12)
                     }
                     .buttonStyle(.plain)
-                    .disabled(isSubmitting || !hasAnyAnswers)
+                    .disabled(isSubmitting || !hasAnyAnswers || !canSubmit)
                     .padding()
                 }
                 .frame(width: a4Width(for: geometry.size.height), height: geometry.size.height)
@@ -174,7 +200,9 @@ struct HomeworkSubmissionView: View {
         }
         .ignoresSafeArea()
         .onAppear {
-            loadSubmissionState()
+            Task {
+                await assignment.syncStatusWithGoogleClassroom()
+            }
         }
         .alert("Success!", isPresented: $showSuccessAlert) {
             Button("OK") {
@@ -204,66 +232,6 @@ struct HomeworkSubmissionView: View {
 
     // MARK: - Actions
 
-    private func loadSubmissionState() {
-        Task {
-            do {
-                let accessToken = try await GoogleAuthService.shared.getAccessToken()
-                let url = URL(string: "https://classroom.googleapis.com/v1/courses/\(assignment.coursework.courseId)/courseWork/\(assignment.coursework.id)/studentSubmissions")!
-                var request = URLRequest(url: url)
-                request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-                let (data, _) = try await URLSession.shared.data(for: request)
-
-                struct SubmissionsResponse: Codable {
-                    let studentSubmissions: [Submission]?
-                }
-
-                struct Submission: Codable {
-                    let state: String
-                }
-
-                let response = try JSONDecoder().decode(SubmissionsResponse.self, from: data)
-                if let state = response.studentSubmissions?.first?.state {
-                    await MainActor.run {
-                        submissionState = state
-                    }
-                }
-            } catch {
-                AppLogger.google.error("Failed to load submission state", error: error)
-            }
-        }
-    }
-
-    private func stateDisplayName(for state: String) -> String {
-        switch state {
-        case "NEW": return "Not Started"
-        case "CREATED": return "In Progress"
-        case "TURNED_IN": return "Turned In"
-        case "RETURNED": return "Returned"
-        case "RECLAIMED_BY_STUDENT": return "Reclaimed"
-        default: return state
-        }
-    }
-
-    private func stateColor(for state: String) -> Color {
-        switch state {
-        case "NEW", "CREATED", "RECLAIMED_BY_STUDENT": return .orange
-        case "TURNED_IN": return .green
-        case "RETURNED": return .blue
-        default: return .gray
-        }
-    }
-
-    private func stateIcon(for state: String) -> String {
-        switch state {
-        case "NEW", "CREATED": return "circle.fill"
-        case "TURNED_IN": return "checkmark.circle.fill"
-        case "RETURNED": return "arrow.uturn.backward.circle.fill"
-        case "RECLAIMED_BY_STUDENT": return "arrow.counterclockwise.circle.fill"
-        default: return "questionmark.circle.fill"
-        }
-    }
-
     private func turnInHomework() {
         isSubmitting = true
         submitError = nil
@@ -288,10 +256,12 @@ struct HomeworkSubmissionView: View {
 
                 AppLogger.google.info("Homework submitted successfully")
 
+                // Re-sync status from Google Classroom to get the updated TURNED_IN state
+                await assignment.syncStatusWithGoogleClassroom()
+
                 await MainActor.run {
                     isSubmitting = false
                     driveFileId = fileId
-                    submissionState = "TURNED_IN"
                     showSuccessAlert = true
                 }
             } catch {

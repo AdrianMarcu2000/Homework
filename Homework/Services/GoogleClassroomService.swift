@@ -159,6 +159,43 @@ class GoogleClassroomService {
         }
     }
 
+    // MARK: - Submission Status
+
+    /// Fetch submission status for a specific assignment
+    func fetchSubmissionStatus(courseId: String, courseWorkId: String) async throws -> StudentSubmission? {
+        let accessToken = try await GoogleAuthService.shared.getAccessToken()
+
+        let url = URL(string: "\(baseURL)/courses/\(courseId)/courseWork/\(courseWorkId)/studentSubmissions")!
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        AppLogger.google.info("Fetching submission status for courseWork: \(courseWorkId)...")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            AppLogger.google.debug("HTTP Status: \(httpResponse.statusCode)")
+
+            if httpResponse.statusCode != 200 {
+                if let errorJSON = String(data: data, encoding: .utf8) {
+                    AppLogger.google.error("Error Response: \(errorJSON)")
+                }
+                throw ClassroomError.apiError("HTTP \(httpResponse.statusCode)")
+            }
+        }
+
+        let submissionsResponse = try JSONDecoder().decode(StudentSubmissionsResponse.self, from: data)
+        let submission = submissionsResponse.studentSubmissions?.first
+
+        if let submission = submission {
+            AppLogger.google.info("Fetched submission status: \(submission.state)")
+        } else {
+            AppLogger.google.info("No submission found for this assignment")
+        }
+
+        return submission
+    }
+
     // MARK: - Drive File Download
 
     /// Downloads a file from Google Drive
@@ -558,7 +595,7 @@ private struct StudentSubmissionsResponse: Codable {
     let studentSubmissions: [StudentSubmission]?
 }
 
-private struct StudentSubmission: Codable {
+struct StudentSubmission: Codable {
     let id: String
     let courseWorkId: String
     let userId: String

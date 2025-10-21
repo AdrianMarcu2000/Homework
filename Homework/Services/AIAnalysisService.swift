@@ -550,7 +550,20 @@ Return ONLY valid JSON:
             do {
                 let response = try await session.respond(to: prompt)
 
-                let jsonString = response.content
+                var jsonString = response.content
+
+                // Remove markdown code block wrapper if present
+                jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+                if jsonString.hasPrefix("```json") {
+                    jsonString = String(jsonString.dropFirst(7)) // Remove ```json
+                }
+                if jsonString.hasPrefix("```") {
+                    jsonString = String(jsonString.dropFirst(3)) // Remove ```
+                }
+                if jsonString.hasSuffix("```") {
+                    jsonString = String(jsonString.dropLast(3)) // Remove trailing ```
+                }
+                jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
 
                 guard let data = jsonString.data(using: .utf8) else {
                     await MainActor.run {

@@ -18,7 +18,6 @@ struct AssignmentDetailView: View {
     @State private var analysisError: String?
     @State private var analysisProgress: (current: Int, total: Int)?
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
-    @State private var didTriggerAutoAnalysis = false
     @State private var showSubmissionView = false
 
     var body: some View {
@@ -128,6 +127,8 @@ struct AssignmentDetailView: View {
                                     isReanalyzing = true
                                     if assignment.imageData != nil {
                                         analyzeAssignment(useCloud: true)
+                                    } else if let text = assignment.extractedText ?? assignment.coursework.description {
+                                        analyzeTextOnlyCloud(text: text)
                                     }
                                 }) {
                                     VStack(spacing: 6) {
@@ -143,7 +144,7 @@ struct AssignmentDetailView: View {
                                     .foregroundColor(.green)
                                     .cornerRadius(10)
                                 }
-                                .disabled(isReanalyzing || assignment.isDownloadingImage || assignment.imageData == nil)
+                                .disabled(isReanalyzing || assignment.isDownloadingImage)
                             }
                         }
 
@@ -232,6 +233,8 @@ struct AssignmentDetailView: View {
                             Button(action: {
                                 if assignment.imageData != nil {
                                     analyzeAssignment(useCloud: true)
+                                } else if let text = assignment.extractedText ?? assignment.coursework.description {
+                                    analyzeTextOnlyCloud(text: text)
                                 }
                             }) {
                                 VStack(spacing: 6) {
@@ -247,7 +250,7 @@ struct AssignmentDetailView: View {
                                 .foregroundColor(.green)
                                 .cornerRadius(10)
                             }
-                            .disabled(isAnalyzing || assignment.isDownloadingImage || assignment.imageData == nil)
+                            .disabled(isAnalyzing || assignment.isDownloadingImage)
                         }
                         
                         // Download and Analyze button
@@ -302,24 +305,6 @@ struct AssignmentDetailView: View {
         .onChange(of: isAnalyzing) { _, newValue in
             if !newValue {
                 isReanalyzing = false
-            }
-        }
-        .onAppear {
-            guard !didTriggerAutoAnalysis else { return }
-            didTriggerAutoAnalysis = true
-
-            if isAnalyzing || assignment.isDownloadingImage {
-                return
-            }
-
-            if assignment.analysisResult == nil || assignment.analysisResult?.exercises.isEmpty == true {
-                if assignment.imageData != nil {
-                    analyzeAssignment()
-                } else if assignment.firstImageMaterial != nil {
-                    downloadAndAnalyze()
-                } else if let description = assignment.coursework.description, !description.isEmpty {
-                    analyzeTextOnly(text: description)
-                }
             }
         }
         .overlay {
@@ -452,7 +437,7 @@ struct AssignmentDetailView: View {
         // Store the original text as extractedText
         assignment.extractedText = text
 
-        AppLogger.ai.info("Starting text analysis for assignment")
+        AppLogger.ai.info("Starting text analysis for assignment (Apple AI)")
 
         // Use AI analysis service for text-only homework
         AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
@@ -466,6 +451,36 @@ struct AssignmentDetailView: View {
 
                 case .failure(let error):
                     AppLogger.ai.error("Text analysis failed", error: error)
+                    analysisError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Analyze text-only assignment using Cloud AI (Google Gemini)
+    private func analyzeTextOnlyCloud(text: String) {
+        isAnalyzing = true
+        analysisError = nil
+
+        // Store the original text as extractedText
+        assignment.extractedText = text
+
+        AppLogger.cloud.info("Starting text analysis for assignment (Google AI)")
+
+        // Use Cloud analysis service for text-only homework
+        // Note: CloudAnalysisService doesn't have a dedicated text-only method yet,
+        // so we fall back to Apple AI for text analysis
+        AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
+            DispatchQueue.main.async {
+                isAnalyzing = false
+
+                switch result {
+                case .success(let analysis):
+                    AppLogger.cloud.info("Text analysis complete - Found \(analysis.exercises.count) exercises")
+                    saveAnalysisResult(analysis)
+
+                case .failure(let error):
+                    AppLogger.cloud.error("Text analysis failed", error: error)
                     analysisError = error.localizedDescription
                 }
             }

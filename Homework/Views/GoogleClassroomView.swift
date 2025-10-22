@@ -601,6 +601,9 @@ struct AttachmentRowCompact: View {
                     if fileExtension == "pdf" {
                         Image(systemName: "doc.fill")
                             .foregroundColor(.red)
+                    } else if fileExtension == "odt" {
+                        Image(systemName: "doc.text.fill")
+                            .foregroundColor(.purple)
                     } else if ["jpg", "jpeg", "png", "gif", "heic", "heif", "bmp"].contains(fileExtension) {
                         Image(systemName: "photo.fill")
                             .foregroundColor(.blue)
@@ -924,7 +927,7 @@ struct FullScreenPDFViewer: View {
                 .edgesIgnoringSafeArea(.all)
         } else {
             VStack(spacing: 16) {
-                Image(systemName: "doc.badge.exclamationmark")
+                Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 60))
                     .foregroundColor(.red)
                 Text("Failed to load PDF")

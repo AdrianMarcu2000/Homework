@@ -148,7 +148,9 @@ private struct ContentViewInternal: View {
                     // Detail view for classroom
                     if let attachment = selectedAttachment {
                         // Show attachment viewer in detail pane
+                        // Use file ID to force view recreation when switching attachments
                         AttachmentDetailView(material: attachment)
+                            .id(attachment.driveFile?.driveFile.id ?? UUID().uuidString)
                     } else if let assignment = selectedAssignment {
                         AssignmentDetailView(assignment: assignment)
                     } else {
@@ -650,6 +652,12 @@ private struct AttachmentDetailView: View {
         .onAppear {
             loadAttachment()
         }
+        .onChange(of: material.driveFile?.driveFile.id) { _, _ in
+            // Clear cached data when switching to a different file
+            fileData = nil
+            errorMessage = nil
+            loadAttachment()
+        }
     }
 
     @ViewBuilder
@@ -672,14 +680,42 @@ private struct AttachmentDetailView: View {
     private func driveFileViewer(_ driveFile: DriveFile) -> some View {
         let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()
 
+        let _ = AppLogger.ui.info("Displaying Drive file: \(driveFile.title), extension: \(fileExtension), hasData: \(fileData != nil)")
+
         if ["jpg", "jpeg", "png", "gif", "heic", "heif", "bmp"].contains(fileExtension) {
             // Image viewer
-            if let fileData = fileData, let image = UIImage(data: fileData) {
-                ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .padding()
+            let _ = AppLogger.ui.info("File is image type, fileData size: \(fileData?.count ?? 0) bytes")
+            if let fileData = fileData {
+                if let image = UIImage(data: fileData) {
+                    let _ = AppLogger.ui.info("Image loaded successfully, size: \(image.size)")
+                    GeometryReader { geometry in
+                        ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
+                        }
+                    }
+                } else {
+                    let _ = AppLogger.image.error("Failed to create UIImage from data")
+
+                    // Log data preview for debugging
+                    let previewLength = min(16, fileData.count)
+                    let preview = fileData.prefix(previewLength).map { String(format: "%02x", $0) }.joined(separator: " ")
+                    let _ = AppLogger.image.info("Image data preview (first \(previewLength) bytes): \(preview)")
+
+                    VStack {
+                        Spacer()
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.red)
+                        Text("Failed to load image")
+                            .font(.headline)
+                        Text("\(fileData.count) bytes received")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
                 }
             } else {
                 VStack {
@@ -697,6 +733,18 @@ private struct AttachmentDetailView: View {
                 VStack {
                     Spacer()
                     Text("Loading PDF...")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+        } else if fileExtension == "odt" {
+            // ODT viewer
+            if let fileData = fileData {
+                ODTDetailViewer(odtData: fileData, fileName: driveFile.title)
+            } else {
+                VStack {
+                    Spacer()
+                    Text("Loading ODT...")
                         .foregroundColor(.secondary)
                     Spacer()
                 }
@@ -796,9 +844,11 @@ private struct AttachmentDetailView: View {
         // Only load Drive files (images and PDFs)
         guard let driveFile = material.driveFile?.driveFile else {
             // Links, videos, and forms don't need loading
+            AppLogger.ui.info("Attachment is not a Drive file, skipping download")
             return
         }
 
+        AppLogger.ui.info("Loading Drive file: \(driveFile.title)")
         isLoading = true
         errorMessage = nil
 
@@ -808,6 +858,7 @@ private struct AttachmentDetailView: View {
                 await MainActor.run {
                     fileData = data
                     isLoading = false
+                    AppLogger.ui.info("Successfully loaded \(data.count) bytes for \(driveFile.title)")
                 }
             } catch {
                 await MainActor.run {
@@ -820,6 +871,109 @@ private struct AttachmentDetailView: View {
     }
 }
 
+/// ODT viewer for detail pane
+private struct ODTDetailViewer: View {
+    let odtData: Data
+    let fileName: String
+    @State private var content: ODTProcessingService.ODTContent?
+    @State private var isProcessing = true
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if isProcessing {
+                VStack(spacing: 16) {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Text("Processing ODT document...")
+                        .foregroundColor(.secondary)
+                        .padding(.top, 8)
+                    Spacer()
+                }
+            } else if let error = errorMessage {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.red)
+                    Text("Failed to load ODT")
+                        .font(.headline)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                    Spacer()
+                }
+            } else if let content = content {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Display extracted text
+                        if !content.text.isEmpty {
+                            Text(content.text)
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .padding()
+                        }
+
+                        // Display extracted images
+                        if !content.images.isEmpty {
+                            ForEach(Array(content.images.enumerated()), id: \.offset) { index, image in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Image \(index + 1)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal)
+
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .cornerRadius(8)
+                                        .padding(.horizontal)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical)
+                }
+            } else {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "doc")
+                        .font(.system(size: 60))
+                        .foregroundColor(.secondary)
+                    Text("Empty document")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+        }
+        .onAppear {
+            processODT()
+        }
+    }
+
+    private func processODT() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let extractedContent = ODTProcessingService.shared.extractContent(from: odtData) {
+                DispatchQueue.main.async {
+                    content = extractedContent
+                    isProcessing = false
+                    AppLogger.image.info("ODT processed: \(extractedContent.text.count) chars, \(extractedContent.images.count) images")
+                }
+            } else {
+                DispatchQueue.main.async {
+                    errorMessage = "Could not extract content from ODT file"
+                    isProcessing = false
+                    AppLogger.image.error("Failed to process ODT document")
+                }
+            }
+        }
+    }
+}
+
 /// PDF viewer for detail pane
 import PDFKit
 
@@ -827,15 +981,28 @@ private struct PDFDetailViewer: View {
     let pdfData: Data
 
     var body: some View {
+        let _ = AppLogger.image.info("PDFDetailViewer: Attempting to load PDF with \(pdfData.count) bytes")
+
         if let pdfDocument = PDFDocument(data: pdfData) {
+            let _ = AppLogger.image.info("PDFDetailViewer: PDF loaded successfully, page count: \(pdfDocument.pageCount)")
             PDFKitDetailView(document: pdfDocument)
         } else {
+            let _ = AppLogger.image.error("PDFDetailViewer: Failed to create PDFDocument from data")
+
+            // Log data preview for debugging
+            let previewLength = min(16, pdfData.count)
+            let preview = pdfData.prefix(previewLength).map { String(format: "%02x", $0) }.joined(separator: " ")
+            let _ = AppLogger.image.info("PDF data preview (first \(previewLength) bytes): \(preview)")
+
             VStack(spacing: 16) {
-                Image(systemName: "doc.badge.exclamationmark")
+                Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 60))
                     .foregroundColor(.red)
                 Text("Failed to load PDF")
                     .font(.headline)
+                Text("\(pdfData.count) bytes received")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding()
         }

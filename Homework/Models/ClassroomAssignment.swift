@@ -117,12 +117,12 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
         return nil
     }
 
-    /// Returns all image and PDF materials from the coursework
+    /// Returns all image, PDF, and ODT materials from the coursework
     var allImageAndPDFMaterials: [DriveFile] {
         guard let materials = coursework.materials else { return [] }
 
         var files: [DriveFile] = []
-        let acceptedExtensions = ["jpg", "jpeg", "png", "gif", "heic", "heif", "pdf"]
+        let acceptedExtensions = ["jpg", "jpeg", "png", "gif", "heic", "heif", "pdf", "odt"]
 
         for material in materials {
             if let driveFile = material.driveFile?.driveFile {
@@ -257,6 +257,15 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
                         let pageIndices = Array(0..<min(pageCount, 3))
                         let pdfImages = PDFProcessingService.shared.extractPages(from: pdfData, pageIndices: pageIndices, scale: 2.0)
                         allImages.append(contentsOf: pdfImages)
+                    }
+                } else if fileExtension == "odt" {
+                    AppLogger.google.info("Downloading ODT: \(file.title)")
+                    let odtData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: file.id)
+
+                    // Extract text and images from ODT
+                    if let content = ODTProcessingService.shared.extractContent(from: odtData) {
+                        AppLogger.image.info("Extracted \(content.images.count) images from ODT")
+                        allImages.append(contentsOf: content.images)
                     }
                 } else {
                     // Regular image file

@@ -284,9 +284,15 @@ struct AttachmentBadge: View {
         fileExtension == "pdf"
     }
 
+    private var isODT: Bool {
+        fileExtension == "odt"
+    }
+
     private var iconName: String {
         if isPDF {
             return "doc.fill"
+        } else if isODT {
+            return "doc.text.fill"
         } else if isImage {
             return "photo.fill"
         } else {
@@ -297,6 +303,8 @@ struct AttachmentBadge: View {
     private var iconColor: Color {
         if isPDF {
             return .red
+        } else if isODT {
+            return .purple
         } else if isImage {
             return .blue
         } else {
@@ -323,6 +331,15 @@ struct AttachmentBadge: View {
                     .padding(.horizontal, 4)
                     .padding(.vertical, 2)
                     .background(Color.red.opacity(0.1))
+                    .cornerRadius(4)
+            } else if isODT {
+                Text("ODT")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.purple)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(Color.purple.opacity(0.1))
                     .cornerRadius(4)
             } else if isImage {
                 Text("IMG")
@@ -661,7 +678,7 @@ struct PDFViewerView: View {
             PDFKitView(document: pdfDocument)
         } else {
             VStack(spacing: 16) {
-                Image(systemName: "doc.badge.exclamationmark")
+                Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 60))
                     .foregroundColor(.red)
                 Text("Failed to load PDF")

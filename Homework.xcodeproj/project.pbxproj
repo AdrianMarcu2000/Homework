@@ -11,6 +11,7 @@
 		4037A3A52E9958D700EE6957 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4037A3A42E9958D700EE6957 /* FirebaseCore */; };
 		4037A3B82E996BB200EE6957 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 4037A3B72E996BB200EE6957 /* GoogleSignIn */; };
 		4037A3BA2E996BB200EE6957 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4037A3B92E996BB200EE6957 /* GoogleSignInSwift */; };
+		40784E422EA90CD40083EAE8 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 40784E412EA90CD40083EAE8 /* ZIPFoundation */; };
 		40B09C232E9F85F500743D2F /* LaTeXSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 40B09C222E9F85F500743D2F /* LaTeXSwiftUI */; };
 /* End PBXBuildFile section */
 
@@ -49,6 +50,7 @@
 				4037A3A32E9958D700EE6957 /* FirebaseAppCheck in Frameworks */,
 				4037A3B82E996BB200EE6957 /* GoogleSignIn in Frameworks */,
 				4037A3BA2E996BB200EE6957 /* GoogleSignInSwift in Frameworks */,
+				40784E422EA90CD40083EAE8 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -96,6 +98,7 @@
 				4037A3B72E996BB200EE6957 /* GoogleSignIn */,
 				4037A3B92E996BB200EE6957 /* GoogleSignInSwift */,
 				40B09C222E9F85F500743D2F /* LaTeXSwiftUI */,
+				40784E412EA90CD40083EAE8 /* ZIPFoundation */,
 			);
 			productName = Homework;
 			productReference = 404E14FE2E96E1AC00E01643 /* Homework.app */;
@@ -129,6 +132,7 @@
 				4037A3A12E9958D700EE6957 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				4037A3B62E996BB200EE6957 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				40B09C212E9F85F500743D2F /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */,
+				40784E402EA90CD40083EAE8 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 404E14FF2E96E1AC00E01643 /* Products */;
@@ -400,6 +404,14 @@
 				minimumVersion = 9.0.0;
 			};
 		};
+		40784E402EA90CD40083EAE8 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.20;
+			};
+		};
 		40B09C212E9F85F500743D2F /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/colinc86/LaTeXSwiftUI.git";
@@ -430,6 +442,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4037A3B62E996BB200EE6957 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		40784E412EA90CD40083EAE8 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 40784E402EA90CD40083EAE8 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
 		};
 		40B09C222E9F85F500743D2F /* LaTeXSwiftUI */ = {
 			isa = XCSwiftPackageProductDependency;

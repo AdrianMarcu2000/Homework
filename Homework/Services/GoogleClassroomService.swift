@@ -209,9 +209,22 @@ class GoogleClassroomService {
 
         AppLogger.google.info("Downloading file from Google Drive: \(fileId)...")
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        // Log response details
+        if let httpResponse = response as? HTTPURLResponse {
+            AppLogger.google.info("Download HTTP Status: \(httpResponse.statusCode)")
+            if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") {
+                AppLogger.google.info("Content-Type: \(contentType)")
+            }
+        }
 
         AppLogger.google.info("Downloaded \(data.count) bytes")
+
+        // Log first few bytes to verify data integrity
+        let previewLength = min(16, data.count)
+        let preview = data.prefix(previewLength).map { String(format: "%02x", $0) }.joined(separator: " ")
+        AppLogger.google.info("Data preview (first \(previewLength) bytes): \(preview)")
 
         return data
     }

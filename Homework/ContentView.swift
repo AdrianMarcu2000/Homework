@@ -65,6 +65,9 @@ private struct ContentViewInternal: View {
     /// Currently selected classroom assignment
     @State private var selectedAssignment: ClassroomAssignment?
 
+    /// Currently selected attachment to view in detail pane
+    @State private var selectedAttachment: Material?
+
     init() {
         // Initialize with a temporary context; will use environment context
         _viewModel = StateObject(wrappedValue: HomeworkCaptureViewModel(context: PersistenceController.shared.container.viewContext))
@@ -105,7 +108,8 @@ private struct ContentViewInternal: View {
                 } else {
                     GoogleClassroomView(
                         selectedCourse: $selectedCourse,
-                        selectedAssignment: $selectedAssignment
+                        selectedAssignment: $selectedAssignment,
+                        selectedAttachment: $selectedAttachment
                     )
                 }
             }
@@ -142,7 +146,10 @@ private struct ContentViewInternal: View {
                     }
                 } else {
                     // Detail view for classroom
-                    if let assignment = selectedAssignment {
+                    if let attachment = selectedAttachment {
+                        // Show attachment viewer in detail pane
+                        AttachmentDetailView(material: attachment)
+                    } else if let assignment = selectedAssignment {
                         AssignmentDetailView(assignment: assignment)
                     } else {
                         // Empty state for classroom
@@ -599,6 +606,256 @@ private struct HomeworkTextView: View {
         }
         .navigationTitle("Original")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// View for displaying an attachment in the detail pane
+private struct AttachmentDetailView: View {
+    let material: Material
+    @State private var isLoading = false
+    @State private var fileData: Data?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if isLoading {
+                VStack(spacing: 16) {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Text("Loading attachment...")
+                        .foregroundColor(.secondary)
+                        .padding(.top, 8)
+                    Spacer()
+                }
+            } else if let error = errorMessage {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 60))
+                        .foregroundColor(.red)
+                    Text("Failed to load attachment")
+                        .font(.headline)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                    Spacer()
+                }
+            } else {
+                attachmentContent
+            }
+        }
+        .onAppear {
+            loadAttachment()
+        }
+    }
+
+    @ViewBuilder
+    private var attachmentContent: some View {
+        if let driveFile = material.driveFile?.driveFile {
+            driveFileViewer(driveFile)
+        } else if let link = material.link {
+            linkViewer(link)
+        } else if let video = material.youtubeVideo {
+            videoViewer(video)
+        } else if let form = material.form {
+            formViewer(form)
+        } else {
+            Text("Unsupported attachment type")
+                .foregroundColor(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func driveFileViewer(_ driveFile: DriveFile) -> some View {
+        let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()
+
+        if ["jpg", "jpeg", "png", "gif", "heic", "heif", "bmp"].contains(fileExtension) {
+            // Image viewer
+            if let fileData = fileData, let image = UIImage(data: fileData) {
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding()
+                }
+            } else {
+                VStack {
+                    Spacer()
+                    Text("Loading image...")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+        } else if fileExtension == "pdf" {
+            // PDF viewer
+            if let fileData = fileData {
+                PDFDetailViewer(pdfData: fileData)
+            } else {
+                VStack {
+                    Spacer()
+                    Text("Loading PDF...")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+        } else {
+            // Generic file - show info
+            VStack(spacing: 16) {
+                Spacer()
+                Image(systemName: "doc.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(.blue)
+                Text(driveFile.title)
+                    .font(.headline)
+                if let url = URL(string: driveFile.alternateLink) {
+                    SwiftUI.Link("Open in Drive", destination: url)
+                        .buttonStyle(.borderedProminent)
+                }
+                Spacer()
+            }
+            .padding()
+        }
+    }
+
+    @ViewBuilder
+    private func linkViewer(_ link: Link) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "link.circle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.orange)
+
+            if let title = link.title {
+                Text(title)
+                    .font(.headline)
+            }
+
+            Text(link.url)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding()
+
+            if let url = URL(string: link.url) {
+                SwiftUI.Link("Open Link", destination: url)
+                    .buttonStyle(.borderedProminent)
+            }
+            Spacer()
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private func videoViewer(_ video: YouTubeVideo) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "play.rectangle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.red)
+
+            Text(video.title)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .padding()
+
+            if let url = URL(string: video.alternateLink) {
+                SwiftUI.Link("Watch on YouTube", destination: url)
+                    .buttonStyle(.borderedProminent)
+            }
+            Spacer()
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private func formViewer(_ form: Form) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "list.bullet.clipboard.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.green)
+
+            Text(form.title)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .padding()
+
+            if let url = URL(string: form.formUrl) {
+                SwiftUI.Link("Open Form", destination: url)
+                    .buttonStyle(.borderedProminent)
+            }
+            Spacer()
+        }
+        .padding()
+    }
+
+    private func loadAttachment() {
+        // Only load Drive files (images and PDFs)
+        guard let driveFile = material.driveFile?.driveFile else {
+            // Links, videos, and forms don't need loading
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let data = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
+                await MainActor.run {
+                    fileData = data
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
+                AppLogger.google.error("Failed to load attachment", error: error)
+            }
+        }
+    }
+}
+
+/// PDF viewer for detail pane
+import PDFKit
+
+private struct PDFDetailViewer: View {
+    let pdfData: Data
+
+    var body: some View {
+        if let pdfDocument = PDFDocument(data: pdfData) {
+            PDFKitDetailView(document: pdfDocument)
+        } else {
+            VStack(spacing: 16) {
+                Image(systemName: "doc.badge.exclamationmark")
+                    .font(.system(size: 60))
+                    .foregroundColor(.red)
+                Text("Failed to load PDF")
+                    .font(.headline)
+            }
+            .padding()
+        }
+    }
+}
+
+private struct PDFKitDetailView: UIViewRepresentable {
+    let document: PDFDocument
+
+    func makeUIView(context: Context) -> PDFView {
+        let pdfView = PDFView()
+        pdfView.document = document
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayDirection = .vertical
+        return pdfView
+    }
+
+    func updateUIView(_ uiView: PDFView, context: Context) {
+        uiView.document = document
     }
 }
 

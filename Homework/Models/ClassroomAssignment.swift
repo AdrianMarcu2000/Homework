@@ -101,6 +101,41 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
         return nil
     }
 
+    /// Returns the first PDF material from the coursework, if any
+    var firstPDFMaterial: DriveFile? {
+        guard let materials = coursework.materials else { return nil }
+
+        for material in materials {
+            if let driveFile = material.driveFile?.driveFile {
+                let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()
+                if fileExtension == "pdf" {
+                    return driveFile
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Returns all image and PDF materials from the coursework
+    var allImageAndPDFMaterials: [DriveFile] {
+        guard let materials = coursework.materials else { return [] }
+
+        var files: [DriveFile] = []
+        let acceptedExtensions = ["jpg", "jpeg", "png", "gif", "heic", "heif", "pdf"]
+
+        for material in materials {
+            if let driveFile = material.driveFile?.driveFile {
+                let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()
+                if acceptedExtensions.contains(fileExtension) {
+                    files.append(driveFile)
+                }
+            }
+        }
+
+        return files
+    }
+
     init(coursework: ClassroomCoursework, courseName: String) {
         self.coursework = coursework
         self.courseName = courseName
@@ -109,7 +144,7 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
         loadFromCache()
     }
 
-    // MARK: - Image Download
+    // MARK: - File Download
 
     /// Downloads the image from Google Drive if available
     func downloadImage() async throws {
@@ -130,6 +165,123 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
                 self.isDownloadingImage = false
                 // Don't save to cache - images should always be fetched fresh from Google Drive
             }
+        } catch {
+            await MainActor.run {
+                self.isDownloadingImage = false
+                self.downloadError = error.localizedDescription
+            }
+            throw error
+        }
+    }
+
+    /// Downloads a PDF file from Google Drive and extracts selected pages as images
+    ///
+    /// - Parameters:
+    ///   - driveFile: The PDF file to download
+    ///   - pageIndices: Selected page indices (0-based). If more than 3 pages, only first 3 will be used.
+    /// - Returns: Array of images extracted from the PDF
+    func downloadAndProcessPDF(driveFile: DriveFile, pageIndices: [Int]) async throws -> [UIImage] {
+        await MainActor.run {
+            isDownloadingImage = true
+            downloadError = nil
+        }
+
+        do {
+            AppLogger.google.info("Downloading PDF: \(driveFile.title)")
+            let pdfData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
+
+            // Limit to 3 pages max
+            let limitedIndices = Array(pageIndices.prefix(3))
+            AppLogger.image.info("Extracting \(limitedIndices.count) pages from PDF")
+
+            // Extract selected pages as images
+            let images = PDFProcessingService.shared.extractPages(from: pdfData, pageIndices: limitedIndices, scale: 2.0)
+
+            guard !images.isEmpty else {
+                throw ClassroomAssignmentError.pdfProcessingFailed("No pages could be extracted from PDF")
+            }
+
+            await MainActor.run {
+                // Combine multiple images into one for display and analysis
+                if images.count == 1 {
+                    self.imageData = images[0].jpegData(compressionQuality: 0.8)
+                } else if let combinedImage = PDFProcessingService.shared.combineImages(images, spacing: 20) {
+                    self.imageData = combinedImage.jpegData(compressionQuality: 0.8)
+                } else {
+                    // Fallback to first image
+                    self.imageData = images[0].jpegData(compressionQuality: 0.8)
+                }
+                self.isDownloadingImage = false
+            }
+
+            AppLogger.image.info("Successfully processed \(images.count) PDF pages")
+            return images
+        } catch {
+            await MainActor.run {
+                self.isDownloadingImage = false
+                self.downloadError = error.localizedDescription
+            }
+            throw error
+        }
+    }
+
+    /// Downloads all attachments (images and PDFs) for analysis
+    func downloadAllAttachments() async throws -> [UIImage] {
+        let files = allImageAndPDFMaterials
+
+        guard !files.isEmpty else {
+            throw ClassroomAssignmentError.noAttachments
+        }
+
+        await MainActor.run {
+            isDownloadingImage = true
+            downloadError = nil
+        }
+
+        var allImages: [UIImage] = []
+
+        do {
+            for file in files {
+                let fileExtension = (file.title as NSString).pathExtension.lowercased()
+
+                if fileExtension == "pdf" {
+                    AppLogger.google.info("Downloading PDF: \(file.title)")
+                    let pdfData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: file.id)
+
+                    // Get page count
+                    if let pageCount = PDFProcessingService.shared.getPageCount(from: pdfData) {
+                        AppLogger.image.info("PDF has \(pageCount) pages")
+
+                        // If PDF has more than 3 pages, we'll need user selection
+                        // For now, auto-select first 3 pages
+                        let pageIndices = Array(0..<min(pageCount, 3))
+                        let pdfImages = PDFProcessingService.shared.extractPages(from: pdfData, pageIndices: pageIndices, scale: 2.0)
+                        allImages.append(contentsOf: pdfImages)
+                    }
+                } else {
+                    // Regular image file
+                    AppLogger.google.info("Downloading image: \(file.title)")
+                    let imageData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: file.id)
+                    if let image = UIImage(data: imageData) {
+                        allImages.append(image)
+                    }
+                }
+            }
+
+            await MainActor.run {
+                // Store combined image for display
+                if allImages.count == 1 {
+                    self.imageData = allImages[0].jpegData(compressionQuality: 0.8)
+                } else if let combinedImage = PDFProcessingService.shared.combineImages(allImages, spacing: 20) {
+                    self.imageData = combinedImage.jpegData(compressionQuality: 0.8)
+                } else if let firstImage = allImages.first {
+                    self.imageData = firstImage.jpegData(compressionQuality: 0.8)
+                }
+                self.isDownloadingImage = false
+            }
+
+            AppLogger.google.info("Successfully downloaded and processed \(allImages.count) attachment(s)")
+            return allImages
         } catch {
             await MainActor.run {
                 self.isDownloadingImage = false
@@ -247,11 +399,17 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
 /// Errors specific to classroom assignments
 enum ClassroomAssignmentError: LocalizedError {
     case noImageAttached
+    case noAttachments
+    case pdfProcessingFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .noImageAttached:
             return "This assignment has no image attachments"
+        case .noAttachments:
+            return "This assignment has no file attachments"
+        case .pdfProcessingFailed(let message):
+            return "Failed to process PDF: \(message)"
         }
     }
 }

@@ -19,6 +19,10 @@ struct AssignmentDetailView: View {
     @State private var analysisProgress: (current: Int, total: Int)?
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
     @State private var showSubmissionView = false
+    @State private var showPDFPageSelector = false
+    @State private var downloadedPDFData: Data?
+    @State private var selectedPDFFile: DriveFile?
+    @State private var multipleImages: [UIImage] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -253,8 +257,8 @@ struct AssignmentDetailView: View {
                             .disabled(isAnalyzing || assignment.isDownloadingImage)
                         }
                         
-                        // Download and Analyze button
-                        if assignment.imageData == nil && assignment.firstImageMaterial != nil {
+                        // Download and Analyze button - show if there are any attachments
+                        if assignment.imageData == nil && !assignment.allImageAndPDFMaterials.isEmpty {
                             Button(action: downloadAndAnalyze) {
                                 VStack(spacing: 6) {
                                     Image(systemName: "arrow.down.circle.fill")
@@ -314,6 +318,21 @@ struct AssignmentDetailView: View {
                 })
             }
         }
+        .sheet(isPresented: $showPDFPageSelector) {
+            if let pdfData = downloadedPDFData {
+                PDFPageSelectorView(
+                    pdfData: pdfData,
+                    onConfirm: { pageIndices in
+                        handlePDFPageSelection(pageIndices)
+                    },
+                    onCancel: {
+                        showPDFPageSelector = false
+                        downloadedPDFData = nil
+                        selectedPDFFile = nil
+                    }
+                )
+            }
+        }
     }
 
     // MARK: - Actions
@@ -321,11 +340,70 @@ struct AssignmentDetailView: View {
     private func downloadAndAnalyze() {
         Task {
             do {
-                try await assignment.downloadImage()
-                analyzeAssignment()
+                let files = assignment.allImageAndPDFMaterials
+
+                // Check if there's a PDF that needs page selection
+                if let pdfFile = files.first(where: { ($0.title as NSString).pathExtension.lowercased() == "pdf" }) {
+                    // Download PDF and check page count
+                    let pdfData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: pdfFile.id)
+
+                    if let pageCount = PDFProcessingService.shared.getPageCount(from: pdfData) {
+                        if pageCount > 3 {
+                            // Show page selector
+                            await MainActor.run {
+                                self.downloadedPDFData = pdfData
+                                self.selectedPDFFile = pdfFile
+                                self.showPDFPageSelector = true
+                            }
+                            return
+                        }
+                    }
+                }
+
+                // No PDF or PDF has 3 or fewer pages - download and analyze all attachments
+                let images = try await assignment.downloadAllAttachments()
+
+                await MainActor.run {
+                    self.multipleImages = images
+                }
+
+                // Analyze based on image count
+                if images.count == 1 {
+                    analyzeAssignment(useCloud: false)
+                } else {
+                    analyzeMultipleImages(images: images, useCloud: false)
+                }
             } catch {
                 analysisError = error.localizedDescription
-                AppLogger.google.error("Failed to download image", error: error)
+                AppLogger.google.error("Failed to download attachments", error: error)
+            }
+        }
+    }
+
+    private func handlePDFPageSelection(_ pageIndices: [Int]) {
+        guard let pdfFile = selectedPDFFile else {
+            return
+        }
+
+        showPDFPageSelector = false
+
+        Task {
+            do {
+                let images = try await assignment.downloadAndProcessPDF(driveFile: pdfFile, pageIndices: pageIndices)
+
+                await MainActor.run {
+                    self.multipleImages = images
+                }
+
+                // Analyze the selected pages
+                if images.count == 1 {
+                    analyzeAssignment(useCloud: false)
+                } else {
+                    analyzeMultipleImages(images: images, useCloud: false)
+                }
+            } catch {
+                analysisError = error.localizedDescription
+                AppLogger.google.error("Failed to process PDF pages", error: error)
             }
         }
     }
@@ -407,6 +485,60 @@ struct AssignmentDetailView: View {
                 case .failure(let error):
                     analysisError = error.localizedDescription
                     AppLogger.cloud.error("Cloud analysis failed", error: error)
+                }
+            }
+        }
+    }
+
+    // MARK: - Multi-Image Analysis
+
+    private func analyzeMultipleImages(images: [UIImage], useCloud: Bool) {
+        isAnalyzing = true
+        analysisError = nil
+        analysisProgress = nil
+
+        AppLogger.ai.info("Starting multi-image analysis with \(images.count) images")
+
+        // Combine all images into one for OCR
+        guard let combinedImage = PDFProcessingService.shared.combineImages(images, spacing: 20) else {
+            isAnalyzing = false
+            analysisError = "Failed to combine images"
+            return
+        }
+
+        // Perform OCR on combined image
+        OCRService.shared.recognizeTextWithBlocks(from: combinedImage) { result in
+            switch result {
+            case .success(let ocrResult):
+                DispatchQueue.main.async {
+                    assignment.extractedText = ocrResult.fullText
+                }
+
+                // Analyze with cloud AI (always use cloud for multi-image)
+                let aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
+
+                CloudAnalysisService.shared.analyzeHomework(images: images, ocrBlocks: aiBlocks) { result in
+                    DispatchQueue.main.async {
+                        isAnalyzing = false
+                        analysisProgress = nil
+
+                        switch result {
+                        case .success(let analysis):
+                            saveAnalysisResult(analysis)
+                            AppLogger.cloud.info("Multi-image analysis complete - Found \(analysis.exercises.count) exercises")
+
+                        case .failure(let error):
+                            analysisError = error.localizedDescription
+                            AppLogger.cloud.error("Multi-image analysis failed", error: error)
+                        }
+                    }
+                }
+
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    isAnalyzing = false
+                    analysisError = error.localizedDescription
+                    AppLogger.ocr.error("OCR failed on combined image", error: error)
                 }
             }
         }

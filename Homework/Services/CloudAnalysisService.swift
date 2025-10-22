@@ -56,7 +56,7 @@ extension CloudAnalysisResult.Section: Codable {
     }
 }
 
-/// Request structure for cloud analysis
+/// Request structure for cloud analysis (single image - legacy)
 struct AnalysisRequest: Sendable {
     let imageBase64: String
     let imageMimeType: String
@@ -74,6 +74,44 @@ extension AnalysisRequest: Encodable {
         try container.encode(imageBase64, forKey: .imageBase64)
         try container.encode(imageMimeType, forKey: .imageMimeType)
         try container.encode(ocrJsonText, forKey: .ocrJsonText)
+    }
+}
+
+/// Request structure for multi-image analysis
+struct MultiImageAnalysisRequest: Sendable {
+    let images: [ImageData]
+    let ocrJsonText: String
+
+    struct ImageData: Sendable {
+        let imageBase64: String
+        let imageMimeType: String
+        let pageNumber: Int
+    }
+}
+
+// Explicitly implement Encodable outside of MainActor context
+extension MultiImageAnalysisRequest: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case images, ocrJsonText
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(images, forKey: .images)
+        try container.encode(ocrJsonText, forKey: .ocrJsonText)
+    }
+}
+
+extension MultiImageAnalysisRequest.ImageData: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case imageBase64, imageMimeType, pageNumber
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(imageBase64, forKey: .imageBase64)
+        try container.encode(imageMimeType, forKey: .imageMimeType)
+        try container.encode(pageNumber, forKey: .pageNumber)
     }
 }
 
@@ -110,7 +148,7 @@ class CloudAnalysisService {
     }()
 
 
-    /// Analyzes homework using cloud LLM
+    /// Analyzes homework using cloud LLM (single image)
     ///
     /// - Parameters:
     ///   - image: The homework page image
@@ -125,6 +163,30 @@ class CloudAnalysisService {
                 continuation.resume(returning: result)
             }
         }
+    }
+
+    /// Analyzes homework using cloud LLM (multiple images)
+    ///
+    /// - Parameters:
+    ///   - images: Array of homework page images
+    ///   - ocrBlocks: Array of OCR text blocks with Y coordinates (combined from all pages)
+    ///   - completion: Callback with the analysis result or error
+    func analyzeHomework(
+        images: [UIImage],
+        ocrBlocks: [AIAnalysisService.OCRBlock],
+        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
+    ) {
+        AppLogger.cloud.info("Multi-image analysis: combining \(images.count) images into single image for cloud analysis")
+
+        // For now, combine multiple images into one and use existing single-image endpoint
+        // This is a temporary solution until the multi-image cloud function is deployed
+        guard let combinedImage = PDFProcessingService.shared.combineImages(images, spacing: 20) else {
+            completion(.failure(CloudAnalysisError.imageConversionFailed))
+            return
+        }
+
+        // Use the existing single-image analysis method with the combined image
+        analyzeHomework(image: combinedImage, ocrBlocks: ocrBlocks, completion: completion)
     }
 
     func analyzeHomework(
@@ -314,6 +376,156 @@ class CloudAnalysisService {
 
         task.resume()
     }
+
+    // MARK: - Future Multi-Image Endpoint
+    // TODO: Uncomment this method once the cloud function is deployed
+    // This will send multiple images separately to the cloud for better analysis
+
+    /*
+    /// Performs the actual multi-image analysis request with the given App Check token
+    private func performMultiImageAnalysisRequest(
+        images: [UIImage],
+        ocrBlocks: [AIAnalysisService.OCRBlock],
+        appCheckToken: String,
+        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void,
+        retryCount: Int = 0
+    ) {
+        // Step 1: Convert all images to base64
+        var imageDataArray: [MultiImageAnalysisRequest.ImageData] = []
+
+        for (index, image) in images.enumerated() {
+            guard let imageData = image.jpegData(compressionQuality: 0.5) else {
+                completion(.failure(CloudAnalysisError.imageConversionFailed))
+                return
+            }
+            let imageBase64 = imageData.base64EncodedString()
+            imageDataArray.append(MultiImageAnalysisRequest.ImageData(
+                imageBase64: imageBase64,
+                imageMimeType: "image/jpeg",
+                pageNumber: index + 1
+            ))
+        }
+
+        // Step 2: Format OCR blocks as text with coordinates
+        let ocrJsonText = self.formatOCRBlocks(ocrBlocks)
+
+        // Step 3: Create request
+        let requestBody = MultiImageAnalysisRequest(
+            images: imageDataArray,
+            ocrJsonText: ocrJsonText
+        )
+
+        // Step 4: Call Firebase endpoint with App Check token
+        let url = URL(string: "\(Config.baseURL)/analyzeHomeworkMultiPage")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+
+        do {
+            request.httpBody = try JSONEncoder().encode(requestBody)
+        } catch {
+            completion(.failure(CloudAnalysisError.encodingFailed(error)))
+            return
+        }
+
+        AppLogger.cloud.info("Sending multi-image analysis request to \(url.absoluteString)")
+        AppLogger.cloud.info("Analyzing \(images.count) pages")
+        AppLogger.cloud.debug("OCR text length: \(ocrJsonText.count) characters")
+        AppLogger.cloud.debug("Request size: \(request.httpBody?.count ?? 0) bytes")
+        if retryCount > 0 {
+            AppLogger.cloud.info("Retry attempt \(retryCount) of \(Config.maxRetries)")
+        }
+
+        // Step 5: Execute request with custom session
+        let task = urlSession.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                let nsError = error as NSError
+                AppLogger.cloud.error("Network error in multi-image analysis", error: error)
+                AppLogger.cloud.debug("Error domain: \(nsError.domain), code: \(nsError.code)")
+
+                let isRetryableError = nsError.domain == NSURLErrorDomain &&
+                    (nsError.code == NSURLErrorTimedOut ||
+                     nsError.code == NSURLErrorNetworkConnectionLost ||
+                     nsError.code == NSURLErrorCannotConnectToHost)
+
+                if isRetryableError && retryCount < Config.maxRetries {
+                    AppLogger.cloud.info("Retryable error detected, scheduling retry \(retryCount + 1) of \(Config.maxRetries)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performMultiImageAnalysisRequest(
+                            images: images,
+                            ocrBlocks: ocrBlocks,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
+                completion(.failure(CloudAnalysisError.networkError(error)))
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(CloudAnalysisError.invalidResponse))
+                return
+            }
+
+            AppLogger.cloud.debug("Multi-image response status code: \(httpResponse.statusCode)")
+
+            guard httpResponse.statusCode == 200 else {
+                let errorMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
+                AppLogger.cloud.error("Server returned error: \(errorMessage)")
+
+                if httpResponse.statusCode >= 500 && retryCount < Config.maxRetries {
+                    AppLogger.cloud.info("Server error (5xx), scheduling retry \(retryCount + 1) of \(Config.maxRetries)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performMultiImageAnalysisRequest(
+                            images: images,
+                            ocrBlocks: ocrBlocks,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
+                completion(.failure(CloudAnalysisError.serverError(httpResponse.statusCode, errorMessage)))
+                return
+            }
+
+            guard let data = data else {
+                completion(.failure(CloudAnalysisError.noData))
+                return
+            }
+
+            // Decode and convert
+            do {
+                let cloudResult = try JSONDecoder().decode(CloudAnalysisResult.self, from: data)
+                AppLogger.cloud.info("Successfully decoded multi-image response - Summary: \(cloudResult.summary)")
+                AppLogger.cloud.debug("Found \(cloudResult.sections.count) sections across \(images.count) pages")
+
+                // Convert to our format
+                let analysisResult = Self.convertToAnalysisResult(cloudResult)
+                AppLogger.cloud.info("Converted to \(analysisResult.exercises.count) exercises from \(images.count) pages")
+
+                completion(.success(analysisResult))
+            } catch {
+                AppLogger.cloud.error("Multi-image decoding failed", error: error)
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    AppLogger.cloud.debug("Raw response: \(jsonString.prefix(500))")
+                }
+                completion(.failure(CloudAnalysisError.decodingFailed(error)))
+            }
+        }
+
+        task.resume()
+    }
+    */
 
     /// Formats OCR blocks into text format for the cloud API
     private func formatOCRBlocks(_ blocks: [AIAnalysisService.OCRBlock]) -> String {

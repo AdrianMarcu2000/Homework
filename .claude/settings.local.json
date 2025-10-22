@@ -3,7 +3,8 @@
     "allow": [
       "Bash(defaults write:*)",
       "WebSearch",
-      "WebFetch(domain:developers.google.com)"
+      "WebFetch(domain:developers.google.com)",
+      "Bash(xcodebuild:*)"
     ],
     "deny": [],
     "ask": []

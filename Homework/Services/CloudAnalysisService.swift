@@ -238,6 +238,42 @@ class CloudAnalysisService {
         #endif
     }
 
+    /// Analyzes text-only homework (no image) using cloud LLM
+    ///
+    /// - Parameters:
+    ///   - text: The homework text to analyze
+    ///   - completion: Callback with the analysis result or error
+    func analyzeTextOnly(
+        text: String,
+        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
+    ) {
+        #if DEBUG
+        let appCheckToken = "emulator-bypass-token"
+        AppLogger.cloud.info("DEBUG mode: Using emulator bypass token for text-only analysis")
+        performTextOnlyAnalysisRequest(text: text, appCheckToken: appCheckToken, completion: completion)
+        #else
+        AppLogger.cloud.info("RELEASE mode: Getting App Check token for text-only analysis...")
+        AppCheck.appCheck().token(forcingRefresh: false) { token, error in
+            if let error = error {
+                AppLogger.cloud.error("App Check token error for text-only analysis", error: error)
+                completion(.failure(CloudAnalysisError.appCheckFailed(error)))
+                return
+            }
+
+            guard let token = token else {
+                AppLogger.cloud.error("No App Check token received for text-only analysis")
+                completion(.failure(CloudAnalysisError.noAppCheckToken))
+                return
+            }
+
+            let appCheckToken = token.token
+            AppLogger.cloud.info("App Check token obtained for text-only analysis")
+
+            self.performTextOnlyAnalysisRequest(text: text, appCheckToken: appCheckToken, completion: completion)
+        }
+        #endif
+    }
+
     /// Performs the actual analysis request with the given App Check token
     private func performAnalysisRequest(
         image: UIImage,
@@ -256,6 +292,13 @@ class CloudAnalysisService {
 
         // Step 2: Format OCR blocks as text with coordinates
         let ocrJsonText = self.formatOCRBlocks(ocrBlocks)
+
+        AppLogger.cloud.info("📤 SENDING ANALYSIS REQUEST TO CLOUD AI:")
+        AppLogger.cloud.info("Number of OCR blocks: \(ocrBlocks.count)")
+        AppLogger.cloud.info("OCR text length: \(ocrJsonText.count) characters")
+        AppLogger.cloud.info("---OCR BLOCKS START---")
+        AppLogger.cloud.info(ocrJsonText)
+        AppLogger.cloud.info("---OCR BLOCKS END---")
 
         // Step 3: Create request
         let requestBody = AnalysisRequest(
@@ -279,7 +322,6 @@ class CloudAnalysisService {
         }
 
         AppLogger.cloud.info("Sending analysis request to \(url.absoluteString)")
-        AppLogger.cloud.debug("OCR text length: \(ocrJsonText.count) characters")
         AppLogger.cloud.debug("Request size: \(request.httpBody?.count ?? 0) bytes")
         AppLogger.cloud.debug("Timeout: request=\(Config.requestTimeout)s, resource=\(Config.resourceTimeout)s")
         if retryCount > 0 {
@@ -354,21 +396,187 @@ class CloudAnalysisService {
                 return
             }
 
+            // Log the raw response
+            if let jsonString = String(data: data, encoding: .utf8) {
+                AppLogger.cloud.info("📥 RECEIVED RESPONSE FROM CLOUD AI:")
+                AppLogger.cloud.info("Response length: \(data.count) bytes")
+                AppLogger.cloud.info("---RESPONSE START---")
+                AppLogger.cloud.info(jsonString)
+                AppLogger.cloud.info("---RESPONSE END---")
+            }
+
             // Decode and convert
             do {
                 let cloudResult = try JSONDecoder().decode(CloudAnalysisResult.self, from: data)
-                AppLogger.cloud.info("Successfully decoded response - Summary: \(cloudResult.summary)")
-                AppLogger.cloud.debug("Found \(cloudResult.sections.count) sections")
+                AppLogger.cloud.info("✅ Successfully decoded response - Summary: \(cloudResult.summary)")
+                AppLogger.cloud.info("Found \(cloudResult.sections.count) sections")
+
+                // Log each section
+                for (index, section) in cloudResult.sections.enumerated() {
+                    AppLogger.cloud.info("Section \(index + 1): type=\(section.type), title=\(section.title), yStart=\(section.yStart), yEnd=\(section.yEnd)")
+                    AppLogger.cloud.info("  Content preview: \(section.content.prefix(100))...")
+                }
 
                 // Convert to our format
                 let analysisResult = Self.convertToAnalysisResult(cloudResult)
                 AppLogger.cloud.info("Converted to \(analysisResult.exercises.count) exercises")
 
+                // Log final exercises
+                for (index, exercise) in analysisResult.exercises.enumerated() {
+                    AppLogger.cloud.info("Exercise \(index + 1): #\(exercise.exerciseNumber), type=\(exercise.type), subject=\(exercise.subject ?? "N/A"), startY=\(String(format: "%.3f", exercise.startY)), endY=\(String(format: "%.3f", exercise.endY))")
+                }
+
                 completion(.success(analysisResult))
             } catch {
-                AppLogger.cloud.error("Decoding failed", error: error)
+                AppLogger.cloud.error("❌ Decoding failed", error: error)
                 if let jsonString = String(data: data, encoding: .utf8) {
-                    AppLogger.cloud.debug("Raw response: \(jsonString.prefix(500))")
+                    AppLogger.cloud.error("Raw response causing error: \(jsonString.prefix(500))...")
+                }
+                completion(.failure(CloudAnalysisError.decodingFailed(error)))
+            }
+        }
+
+        task.resume()
+    }
+
+    /// Performs text-only analysis request with the given App Check token
+    /// Uses the analyzeTextOnly Firebase function endpoint
+    private func performTextOnlyAnalysisRequest(
+        text: String,
+        appCheckToken: String,
+        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void,
+        retryCount: Int = 0
+    ) {
+        AppLogger.cloud.info("📤 SENDING TEXT-ONLY ANALYSIS REQUEST TO CLOUD AI:")
+        AppLogger.cloud.info("Text length: \(text.count) characters")
+        AppLogger.cloud.info("---TEXT START---")
+        AppLogger.cloud.info(text)
+        AppLogger.cloud.info("---TEXT END---")
+
+        // Create request body
+        let requestBody: [String: Any] = [
+            "text": text
+        ]
+
+        // Call Firebase endpoint with App Check token
+        let url = URL(string: "\(Config.baseURL)/analyzeTextOnly")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        } catch {
+            completion(.failure(CloudAnalysisError.encodingFailed(error)))
+            return
+        }
+
+        AppLogger.cloud.info("Sending text-only analysis request to \(url.absoluteString)")
+        AppLogger.cloud.debug("Request size: \(request.httpBody?.count ?? 0) bytes")
+        if retryCount > 0 {
+            AppLogger.cloud.info("Retry attempt \(retryCount) of \(Config.maxRetries)")
+        }
+
+        // Execute request with custom session
+        let task = urlSession.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                let nsError = error as NSError
+                AppLogger.cloud.error("Network error in text-only analysis", error: error)
+                AppLogger.cloud.debug("Error domain: \(nsError.domain), code: \(nsError.code)")
+
+                let isRetryableError = nsError.domain == NSURLErrorDomain &&
+                    (nsError.code == NSURLErrorTimedOut ||
+                     nsError.code == NSURLErrorNetworkConnectionLost ||
+                     nsError.code == NSURLErrorCannotConnectToHost)
+
+                if isRetryableError && retryCount < Config.maxRetries {
+                    AppLogger.cloud.info("Retryable error detected, scheduling retry \(retryCount + 1) of \(Config.maxRetries)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performTextOnlyAnalysisRequest(
+                            text: text,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
+                completion(.failure(CloudAnalysisError.networkError(error)))
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(CloudAnalysisError.invalidResponse))
+                return
+            }
+
+            AppLogger.cloud.debug("Text-only analysis response status code: \(httpResponse.statusCode)")
+
+            guard httpResponse.statusCode == 200 else {
+                let errorMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
+                AppLogger.cloud.error("Server returned error: \(errorMessage)")
+
+                if httpResponse.statusCode >= 500 && retryCount < Config.maxRetries {
+                    AppLogger.cloud.info("Server error (5xx), scheduling retry \(retryCount + 1) of \(Config.maxRetries)")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Config.retryDelay) {
+                        self.performTextOnlyAnalysisRequest(
+                            text: text,
+                            appCheckToken: appCheckToken,
+                            completion: completion,
+                            retryCount: retryCount + 1
+                        )
+                    }
+                    return
+                }
+
+                completion(.failure(CloudAnalysisError.serverError(httpResponse.statusCode, errorMessage)))
+                return
+            }
+
+            guard let data = data else {
+                completion(.failure(CloudAnalysisError.noData))
+                return
+            }
+
+            // Log the raw response
+            if let jsonString = String(data: data, encoding: .utf8) {
+                AppLogger.cloud.info("📥 RECEIVED TEXT-ONLY ANALYSIS RESPONSE FROM CLOUD AI:")
+                AppLogger.cloud.info("Response length: \(data.count) bytes")
+                AppLogger.cloud.info("---RESPONSE START---")
+                AppLogger.cloud.info(jsonString)
+                AppLogger.cloud.info("---RESPONSE END---")
+            }
+
+            // Decode and convert
+            do {
+                let cloudResult = try JSONDecoder().decode(CloudAnalysisResult.self, from: data)
+                AppLogger.cloud.info("✅ Successfully decoded text-only response - Summary: \(cloudResult.summary)")
+                AppLogger.cloud.info("Found \(cloudResult.sections.count) sections")
+
+                // Log each section
+                for (index, section) in cloudResult.sections.enumerated() {
+                    AppLogger.cloud.info("Section \(index + 1): type=\(section.type), title=\(section.title), yStart=\(section.yStart), yEnd=\(section.yEnd)")
+                    AppLogger.cloud.info("  Content preview: \(section.content.prefix(100))...")
+                }
+
+                // Convert to our format
+                let analysisResult = Self.convertToAnalysisResult(cloudResult)
+                AppLogger.cloud.info("Converted to \(analysisResult.exercises.count) exercises")
+
+                // Log final exercises
+                for (index, exercise) in analysisResult.exercises.enumerated() {
+                    AppLogger.cloud.info("Exercise \(index + 1): #\(exercise.exerciseNumber), type=\(exercise.type), subject=\(exercise.subject ?? "N/A"), startY=\(String(format: "%.3f", exercise.startY)), endY=\(String(format: "%.3f", exercise.endY))")
+                }
+
+                completion(.success(analysisResult))
+            } catch {
+                AppLogger.cloud.error("❌ Decoding failed for text-only analysis", error: error)
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    AppLogger.cloud.error("Raw response causing error: \(jsonString.prefix(500))...")
                 }
                 completion(.failure(CloudAnalysisError.decodingFailed(error)))
             }

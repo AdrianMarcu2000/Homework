@@ -985,3 +985,228 @@ Return a JSON array with this exact structure:
     functions.logger.error('💥 Failed to generate similar exercises after retries.', lastError);
     res.status(500).send(`Failed to generate similar exercises: ${lastError?.message || 'Unknown error occurred.'}`);
 });
+
+/**
+ * Analyzes text-only homework (without images, e.g., from ODT files) using Gemini AI.
+ *
+ * SECURITY: This function enforces Firebase App Check to verify requests come from legitimate app instances.
+ */
+export const analyzeTextOnly = functions.https.onRequest(async (req, res) => {
+    // Check for POST request
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed. Use POST.');
+        return;
+    }
+
+    // SECURITY: Verify App Check token
+    const appCheckToken = req.header('X-Firebase-AppCheck');
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+    if (!appCheckToken) {
+        functions.logger.warn('Request rejected: Missing App Check token');
+        res.status(401).send('Unauthorized: App Check token required.');
+        return;
+    }
+
+    functions.logger.info(`✅ App Check token received for text-only analysis`);
+
+    // Allow bypass token in emulator mode
+    if (isEmulator && appCheckToken === 'emulator-bypass-token') {
+        functions.logger.info('🔐 EMULATOR MODE: Using bypass token for local development');
+        functions.logger.warn('⚠️  App Check is DISABLED. This is only allowed in emulator mode.');
+    }
+
+    // API Key
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        functions.logger.error("GEMINI_API_KEY environment variable not set.");
+        res.status(500).send('Server configuration error: API Key missing.');
+        return;
+    }
+
+    // Input validation
+    const { text } = req.body;
+    if (!text) {
+        res.status(400).send('Missing required parameter: text.');
+        return;
+    }
+
+    functions.logger.info(`📝 Analyzing text-only homework (${text.length} characters)`);
+
+    // System instruction for text-only analysis
+    const systemInstruction = `You are an intelligent homework analysis engine. Analyze the provided text to identify ALL exercises.
+
+CRITICAL: You must analyze the ACTUAL text provided by the user, NOT any examples shown in this prompt. The examples are only to show the JSON format you should use.
+
+--- CLASSIFICATION GUIDELINES ---
+Analyze each segment of text and classify it as EITHER 'EXERCISE' OR 'SKIP'.
+
+EXERCISE (type: 'EXERCISE'):
+- Numbered items (1., 2., a., b., Exercise 1:, Problem 1:, etc.)
+- Questions with question words: "Find", "Calculate", "Solve", "Show", "Prove", "Determine", "Explain"
+- Instructions with imperative verbs: "Complete", "Fill in", "Draw", "Write", "Expand"
+- Questions ending with "?" or containing question patterns
+- When the text contains multiple paragraphs with different exercises, separate them
+
+SKIP (type: 'SKIP'):
+- Pure headers or titles without actual questions/tasks
+- Descriptive text without any task or question
+
+--- SUBJECT CLASSIFICATION ---
+For each EXERCISE, determine the subject:
+- 'mathematics': Math problems, calculations, equations
+- 'language': Grammar, vocabulary, sentence construction
+- 'science': Scientific concepts and experiments
+- 'history': Historical events and analysis
+- 'grammar': Grammar exercises, punctuation
+- 'reading': Reading comprehension
+- 'writing': Essays, composition
+- 'other': Any other subject
+
+--- INPUT TYPE DETERMINATION ---
+For each EXERCISE:
+- 'inline': Fill-in-the-blank with visible placeholders (___,  [blank])
+- 'text': Short-answer questions, definitions, simple questions
+- 'canvas': Problems requiring calculations, diagrams, or visual work
+- 'both': Complex problems requiring both visual work and written explanation
+
+--- COORDINATE SYSTEM FOR TEXT-ONLY ---
+Since there is no image:
+- Assign sequential Y-coordinates based on the order exercises appear in the text
+- First exercise: yStart=100, yEnd=200
+- Second exercise: yStart=200, yEnd=300
+- Third exercise: yStart=300, yEnd=400
+- And so on... (increment by 100 for each exercise)
+
+Your output MUST strictly adhere to the provided JSON schema.`;
+
+    // Build the user prompt
+    const userPrompt = `INSTRUCTIONS:
+Analyze the provided text to identify ALL exercises.
+
+CRITICAL: You must analyze the ACTUAL text provided below, NOT the example structure shown later in this prompt. The example is only to show the JSON format you should use.
+
+EXERCISE DETECTION RULES:
+- Numbered items (1., 2., a., b., Exercise 1:, Problem 1:, etc.) = EXERCISE
+- Questions with question words: "Find", "Calculate", "Solve", "Show", "Prove", "Determine", "Explain"
+- Instructions with imperative verbs: "Complete", "Fill in", "Draw", "Write", "Expand"
+- Questions ending with "?" or containing question patterns
+- When the text contains multiple paragraphs with different exercises, separate them
+
+SKIP (not exercises):
+- Pure headers or titles without actual questions/tasks
+- Descriptive text without any task or question
+
+For each exercise, identify:
+- exerciseNumber: The number/identifier (e.g., "1", "a", "Exercise 3")
+- type: The nature of this content block. Must be either 'EXERCISE' or 'SKIP'
+- title: A concise identifier for this exercise (e.g., "Exercise 1")
+- content: Clean, properly formatted text of the exercise. Fix any errors and use LaTeX for math.
+- subject: The subject area (mathematics, language, science, history, grammar, etc.) or null if unclear
+- inputType: How the student should answer - "text", "canvas", "inline", or "both"
+- yStart: Sequential Y-coordinate (100, 200, 300, etc.)
+- yEnd: Sequential Y-coordinate (200, 300, 400, etc.)
+
+IMPORTANT:
+- Return ONLY valid JSON
+- For mathematical content, use LaTeX notation
+- Enclose inline math expressions with \\( and \\)
+- Enclose block math expressions with \\[ and \\]
+
+---TEXT TO ANALYZE---
+${text}
+---END TEXT---
+
+Expected output schema (DO NOT copy this example - analyze the actual text above):
+{
+    "summary": "Brief summary of homework",
+    "sections": [
+        {
+            "type": "EXERCISE",
+            "title": "<identifier from actual text>",
+            "content": "<actual exercise content from text>",
+            "subject": "<detected subject>",
+            "inputType": "<text|canvas|inline|both>",
+            "yStart": 100,
+            "yEnd": 200
+        }
+    ]
+}
+
+Return ONLY valid JSON following the schema above:`;
+
+    // Construct the API payload
+    const model = "gemini-2.5-flash";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const payload = {
+        contents: [
+            {
+                role: "user",
+                parts: [{ text: userPrompt }]
+            }
+        ],
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: analysisSchema
+        },
+        systemInstruction: {
+            parts: [{ text: systemInstruction }]
+        }
+    };
+
+    // Call the API with retry logic
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+            const startTime = Date.now();
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const elapsed = Date.now() - startTime;
+            functions.logger.info(`⏱️  Text-only analysis completed in ${elapsed}ms with status ${response.status}`);
+
+            const result: any = await response.json();
+
+            if (!response.ok) {
+                throw new Error(`API returned status ${response.status}: ${JSON.stringify(result)}`);
+            }
+
+            const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!jsonText) {
+                throw new Error('LLM output content is missing or structured incorrectly.');
+            }
+
+            // Successfully received JSON response from the model
+            const structuredOutput = JSON.parse(jsonText);
+
+            functions.logger.info(`✅ Successfully analyzed text-only homework. Sections: ${structuredOutput.sections?.length || 0}`);
+            functions.logger.info("Text-only analysis result:", structuredOutput);
+
+            // Return the structured JSON to the client
+            res.status(200).json(structuredOutput);
+            return;
+
+        } catch (error) {
+            lastError = error as Error;
+            functions.logger.warn(`❌ Text-only analysis attempt ${attempt + 1} failed: ${lastError.message}`);
+
+            if (attempt < MAX_RETRIES - 1) {
+                const delay = Math.pow(2, attempt) * 1000;
+                functions.logger.info(`⏳ Retrying in ${Math.round(delay / 1000)}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    // Final error response
+    functions.logger.error('💥 Failed to analyze text-only homework after retries.', lastError);
+    res.status(500).send(`Failed to analyze text: ${lastError?.message || 'Unknown error occurred.'}`);
+});

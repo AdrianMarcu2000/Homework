@@ -532,6 +532,8 @@ Return ONLY the JSON object:
 INSTRUCTIONS:
 You are a helpful assistant that is an expert in LaTeX and always returns valid LaTeX. You are an educational content analyzer. Analyze the provided text to identify ALL exercises.
 
+CRITICAL: You must analyze the ACTUAL text provided below, NOT the example structure shown later in this prompt. The example is only to show the JSON format you should use.
+
 EXERCISE DETECTION RULES:
 - Numbered items (1., 2., a., b., Exercise 1:, Problem 1:, etc.) = EXERCISE
 - Questions with question words: "Find", "Calculate", "Solve", "Show", "Prove", "Determine", "Explain"
@@ -557,15 +559,15 @@ IMPORTANT:
 - Enclose block math expressions with \\[ and \\].
 - Ensure all backslashes in LaTeX are properly escaped for JSON output (e.g., \\\\(x^2\\\\) becomes \\\\\\\\(x^2\\\\\\\\) in the final JSON string).
 
-Return a JSON object with this exact structure:
+Return a JSON object with this exact structure (DO NOT copy this example - analyze the actual text below):
 {
     "exercises": [
         {
-            "exerciseNumber": "1",
-            "type": "mathematical",
-            "fullContent": "Solve for x: \\(2x + 5 = 15\\)",
-            "subject": "mathematics",
-            "inputType": "text"
+            "exerciseNumber": "<exercise number from text>",
+            "type": "<appropriate type>",
+            "fullContent": "<actual exercise content from text>",
+            "subject": "<detected subject>",
+            "inputType": "<text|canvas|both>"
         }
     ]
 }

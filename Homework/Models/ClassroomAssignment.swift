@@ -239,6 +239,7 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
         }
 
         var allImages: [UIImage] = []
+        var odtExtractedText: String = ""
 
         do {
             for file in files {
@@ -264,8 +265,16 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
 
                     // Extract text and images from ODT
                     if let content = ODTProcessingService.shared.extractContent(from: odtData) {
-                        AppLogger.image.info("Extracted \(content.images.count) images from ODT")
+                        AppLogger.image.info("Extracted \(content.images.count) images and \(content.text.count) chars of text from ODT")
                         allImages.append(contentsOf: content.images)
+
+                        // Store extracted text to be used for analysis
+                        if !content.text.isEmpty {
+                            if !odtExtractedText.isEmpty {
+                                odtExtractedText += "\n\n---\n\n"
+                            }
+                            odtExtractedText += content.text
+                        }
                     }
                 } else {
                     // Regular image file
@@ -278,13 +287,23 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
             }
 
             await MainActor.run {
-                // Store combined image for display
+                // Store ODT extracted text for text-only analysis if no images
+                if allImages.isEmpty && !odtExtractedText.isEmpty {
+                    AppLogger.image.info("No images extracted, but have \(odtExtractedText.count) chars of ODT text - will use for text-only analysis")
+                    // Combine with assignment description
+                    let description = coursework.description ?? ""
+                    if !description.isEmpty {
+                        self.extractedText = "Assignment Description:\n\(description)\n\nAttachment Content:\n\(odtExtractedText)"
+                    } else {
+                        self.extractedText = odtExtractedText
+                    }
+                }
+
+                // Store combined image for display (only if we have images)
                 if allImages.count == 1 {
                     self.imageData = allImages[0].jpegData(compressionQuality: 0.8)
-                } else if let combinedImage = PDFProcessingService.shared.combineImages(allImages, spacing: 20) {
+                } else if allImages.count > 1, let combinedImage = PDFProcessingService.shared.combineImages(allImages, spacing: 20) {
                     self.imageData = combinedImage.jpegData(compressionQuality: 0.8)
-                } else if let firstImage = allImages.first {
-                    self.imageData = firstImage.jpegData(compressionQuality: 0.8)
                 }
                 self.isDownloadingImage = false
             }

@@ -14,316 +14,168 @@ import OSLog
 struct AssignmentDetailView: View {
     @ObservedObject var assignment: ClassroomAssignment
     @State private var isAnalyzing = false
-    @State private var isReanalyzing = false
     @State private var analysisError: String?
     @State private var analysisProgress: (current: Int, total: Int)?
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
-    @State private var showSubmissionView = false
+    @State private var selectedAttachment: Material?
     @State private var showPDFPageSelector = false
     @State private var downloadedPDFData: Data?
     @State private var selectedPDFFile: DriveFile?
-    @State private var multipleImages: [UIImage] = []
+    @State private var showExercises = false
+
+    // Check if already analyzed
+    private var hasAnalysis: Bool {
+        assignment.analysisResult != nil && !(assignment.analysisResult?.exercises.isEmpty ?? true)
+    }
 
     var body: some View {
+        if let attachment = selectedAttachment {
+            // Show selected attachment in detail view
+            AttachmentContentView(material: attachment, onBack: {
+                selectedAttachment = nil
+            })
+        } else if showExercises && hasAnalysis {
+            // Show exercises view
+            exercisesView
+        } else {
+            // Show assignment overview with analyze/view exercises buttons
+            assignmentOverviewView
+        }
+    }
+
+    // MARK: - Assignment Overview (Not Analyzed)
+
+    private var assignmentOverviewView: some View {
         VStack(spacing: 0) {
             if isAnalyzing || assignment.isDownloadingImage {
-                // Show progress indicator during download or analysis
-                VStack(spacing: 16) {
-                    Spacer()
-
-                    if assignment.isDownloadingImage {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        Text("Downloading image...")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .padding(.top, 8)
-                    } else if let progress = analysisProgress {
-                        ProgressView(value: Double(progress.current), total: Double(progress.total))
-                            .progressViewStyle(.linear)
-                            .frame(maxWidth: 300)
-                        Text("Analyzing segment \(progress.current) of \(progress.total)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    } else {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        Text("Analyzing assignment...")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .padding(.top, 8)
-                    }
-
-                    Spacer()
-                }
-            } else if let analysis = assignment.analysisResult, !analysis.exercises.isEmpty {
-                // Show exercises directly
-                VStack(spacing: 0) {
-                    // Action buttons at the top
-                    VStack(spacing: 12) {
-                        HStack(spacing: 12) {
-                            // View Original button - show image or text
-                            if assignment.imageData != nil {
-                                // Has image - show image viewer
-                                NavigationLink(destination: AssignmentImageView(assignment: assignment)) {
-                                    VStack(spacing: 6) {
-                                        Image(systemName: "photo.fill")
-                                            .font(.title2)
-                                        Text("View Original")
-                                            .font(.caption)
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.blue.opacity(0.1))
-                                    .foregroundColor(.blue)
-                                    .cornerRadius(10)
-                                }
-                                .buttonStyle(.plain)
-                            } else if assignment.extractedText != nil || assignment.coursework.description != nil {
-                                // No image but has text - show text viewer
-                                NavigationLink(destination: AssignmentTextView(assignment: assignment)) {
-                                    VStack(spacing: 6) {
-                                        Image(systemName: "doc.text.fill")
-                                            .font(.title2)
-                                        Text("View Original")
-                                            .font(.caption)
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.blue.opacity(0.1))
-                                    .foregroundColor(.blue)
-                                    .cornerRadius(10)
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            // Analyze with Apple Intelligence button - always show
-                            if !isAnalyzing {
-                                Button(action: {
-                                    isReanalyzing = true
-                                    if assignment.imageData != nil {
-                                        analyzeAssignment(useCloud: false)
-                                    } else if let text = assignment.extractedText {
-                                        analyzeTextOnly(text: text)
-                                    }
-                                }) {
-                                    VStack(spacing: 6) {
-                                        Image(systemName: "apple.logo")
-                                            .font(.title2)
-                                        Text("Apple AI")
-                                            .font(.caption)
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.purple.opacity(0.1))
-                                    .foregroundColor(.purple)
-                                    .cornerRadius(10)
-                                }
-                                .disabled(isReanalyzing || assignment.isDownloadingImage)
-                            }
-
-                            // Analyze with Google Gemini button - show when cloud analysis is enabled
-                            if useCloudAnalysis && !isAnalyzing {
-                                Button(action: {
-                                    isReanalyzing = true
-                                    if assignment.imageData != nil {
-                                        analyzeAssignment(useCloud: true)
-                                    } else if let text = assignment.extractedText ?? assignment.coursework.description {
-                                        analyzeTextOnlyCloud(text: text)
-                                    }
-                                }) {
-                                    VStack(spacing: 6) {
-                                        Image(systemName: "cloud.fill")
-                                            .font(.title2)
-                                        Text("Google AI")
-                                            .font(.caption)
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.green.opacity(0.1))
-                                    .foregroundColor(.green)
-                                    .cornerRadius(10)
-                                }
-                                .disabled(isReanalyzing || assignment.isDownloadingImage)
-                            }
-                        }
-
-                        // Submit Homework button
-                        Button(action: {
-                            showSubmissionView = true
-                        }) {
-                            HStack {
-                                Image(systemName: "paperplane.fill")
-                                    .font(.title3)
-                                Text("Submit Homework")
-                                    .font(.headline)
-                                    .fontWeight(.semibold)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-
-                    Divider()
-
-                    // Exercises content
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            // Summary card
-                            SummaryCard(
-                                icon: "pencil.circle.fill",
-                                title: "Exercises",
-                                count: analysis.exercises.count,
-                                color: .green
-                            )
-                            .padding(.horizontal)
-
-                            // Exercises
-                            Text("✏️ Exercises")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .padding(.horizontal)
-
-                            ForEach(analysis.exercises, id: \.self) { exercise in
-                                ClassroomExerciseCard(exercise: exercise, assignment: assignment)
-                                    .padding(.horizontal)
-                            }
-                        }
-                        .padding(.vertical)
-                    }
-                    .id(assignment.analysisJSON ?? "")
-                }
+                // Show progress
+                analysisProgressView
             } else {
-                // No analysis exists - show original content and analyze options
-                VStack(spacing: 0) {
-                    // Action buttons at the top
-                    HStack(spacing: 12) {
-                        // Analyze with Apple Intelligence button
-                        Button(action: {
-                            if let _ = assignment.imageData {
-                                analyzeAssignment(useCloud: false)
-                            } else if let text = assignment.extractedText {
-                                analyzeTextOnly(text: text)
-                            }
-                        }) {
-                            VStack(spacing: 6) {
-                                Image(systemName: "apple.logo")
-                                    .font(.title2)
-                                Text("Apple AI")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.purple.opacity(0.1))
-                            .foregroundColor(.purple)
-                            .cornerRadius(10)
-                        }
-                        .disabled(isAnalyzing || assignment.isDownloadingImage)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Assignment description
+                        if let description = assignment.coursework.description, !description.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Assignment Description")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
 
-                        // Analyze with Google Gemini button
-                        if useCloudAnalysis {
-                            Button(action: {
-                                if assignment.imageData != nil {
-                                    analyzeAssignment(useCloud: true)
-                                } else if let text = assignment.extractedText ?? assignment.coursework.description {
-                                    analyzeTextOnlyCloud(text: text)
-                                }
-                            }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "cloud.fill")
-                                        .font(.title2)
-                                    Text("Google AI")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.green.opacity(0.1))
-                                .foregroundColor(.green)
-                                .cornerRadius(10)
+                                Text(description)
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                    .textSelection(.enabled)
+                                    .padding()
+                                    .background(Color(UIColor.secondarySystemBackground))
+                                    .cornerRadius(8)
                             }
-                            .disabled(isAnalyzing || assignment.isDownloadingImage)
+                            .padding(.horizontal)
                         }
-                        
-                        // Download and Analyze button - show if there are any attachments
-                        if assignment.imageData == nil && !assignment.allImageAndPDFMaterials.isEmpty {
-                            Button(action: downloadAndAnalyze) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "arrow.down.circle.fill")
-                                        .font(.title2)
-                                    Text("Download & Analyze")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
+
+                        // Attachments list
+                        if let materials = assignment.coursework.materials, !materials.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Attachments")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal)
+
+                                ForEach(Array(materials.enumerated()), id: \.offset) { index, material in
+                                    AttachmentRowButton(material: material) {
+                                        selectedAttachment = material
+                                    }
+                                    .padding(.horizontal)
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundColor(.blue)
-                                .cornerRadius(10)
                             }
-                            .disabled(isAnalyzing || assignment.isDownloadingImage)
                         }
+
+                        // AI Analysis / Re-analyze buttons
+                        VStack(spacing: 12) {
+                            Text(hasAnalysis ? "Actions" : "Analyze with AI")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            HStack(spacing: 12) {
+                                // Apple AI button
+                                if AIAnalysisService.shared.isModelAvailable {
+                                    Button(action: { analyzeWithAI(useCloud: false) }) {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: "apple.logo")
+                                                .font(.title2)
+                                            Text(hasAnalysis ? "Re-analyze" : "Analyze with")
+                                                .font(.caption)
+                                            if !hasAnalysis {
+                                                Text("Apple AI")
+                                                    .font(.caption)
+                                                    .fontWeight(.semibold)
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, hasAnalysis ? 12 : 16)
+                                        .background(Color.purple.opacity(0.1))
+                                        .foregroundColor(.purple)
+                                        .cornerRadius(10)
+                                    }
+                                    .disabled(isAnalyzing)
+                                }
+
+                                // Google AI button
+                                if useCloudAnalysis {
+                                    Button(action: { analyzeWithAI(useCloud: true) }) {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: "cloud.fill")
+                                                .font(.title2)
+                                            Text(hasAnalysis ? "Re-analyze" : "Analyze with")
+                                                .font(.caption)
+                                            if !hasAnalysis {
+                                                Text("Google AI")
+                                                    .font(.caption)
+                                                    .fontWeight(.semibold)
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, hasAnalysis ? 12 : 16)
+                                        .background(Color.green.opacity(0.1))
+                                        .foregroundColor(.green)
+                                        .cornerRadius(10)
+                                    }
+                                    .disabled(isAnalyzing)
+                                }
+
+                                // View Exercises button (only when analyzed)
+                                if hasAnalysis {
+                                    Button(action: { showExercises = true }) {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: "pencil.and.list.clipboard")
+                                                .font(.title2)
+                                            Text("View Exercises")
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .background(Color.blue.opacity(0.1))
+                                        .foregroundColor(.blue)
+                                        .cornerRadius(10)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 12)
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-
-                    Divider()
-
-                    // Original content
-                    if assignment.imageData != nil {
-                        AssignmentImageView(assignment: assignment)
-                    } else {
-                        AssignmentTextView(assignment: assignment)
-                    }
+                    .padding(.vertical)
                 }
             }
         }
-        .navigationTitle("Exercises")
+        .navigationTitle(assignment.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 2) {
-                    Text(assignment.title)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .lineLimit(1)
-                    Text(assignment.courseName)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-        .onChange(of: isAnalyzing) { _, newValue in
-            if !newValue {
-                isReanalyzing = false
-            }
-        }
-        .overlay {
-            if showSubmissionView {
-                HomeworkSubmissionView(assignment: assignment, onDismiss: {
-                    showSubmissionView = false
-                })
-            }
-        }
         .sheet(isPresented: $showPDFPageSelector) {
-            if let pdfData = downloadedPDFData {
+            if let pdfData = downloadedPDFData, let pdfFile = selectedPDFFile {
                 PDFPageSelectorView(
                     pdfData: pdfData,
                     onConfirm: { pageIndices in
-                        handlePDFPageSelection(pageIndices)
+                        handlePDFPageSelection(pageIndices, pdfFile: pdfFile)
                     },
                     onCancel: {
                         showPDFPageSelector = false
@@ -335,102 +187,177 @@ struct AssignmentDetailView: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Exercises View (Analyzed)
 
-    private func downloadAndAnalyze() {
-        Task {
-            do {
-                let files = assignment.allImageAndPDFMaterials
-
-                // Check if there's a PDF that needs page selection
-                if let pdfFile = files.first(where: { ($0.title as NSString).pathExtension.lowercased() == "pdf" }) {
-                    // Download PDF and check page count
-                    let pdfData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: pdfFile.id)
-
-                    if let pageCount = PDFProcessingService.shared.getPageCount(from: pdfData) {
-                        if pageCount > 3 {
-                            // Show page selector
-                            await MainActor.run {
-                                self.downloadedPDFData = pdfData
-                                self.selectedPDFFile = pdfFile
-                                self.showPDFPageSelector = true
+    private var exercisesView: some View {
+        VStack(spacing: 0) {
+            if isAnalyzing {
+                analysisProgressView
+            } else if let analysis = assignment.analysisResult {
+                VStack(spacing: 0) {
+                    // Custom navigation bar
+                    HStack {
+                        Button(action: { showExercises = false }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("Back")
                             }
-                            return
                         }
+                        .padding()
+
+                        Spacer()
+
+                        Text("Exercises")
+                            .font(.headline)
+
+                        Spacer()
+
+                        // Invisible button for symmetry
+                        Button(action: {}) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("Back")
+                            }
+                        }
+                        .padding()
+                        .opacity(0)
+                    }
+                    .background(Color(UIColor.systemBackground))
+
+                    Divider()
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            // Exercises
+                            ForEach(analysis.exercises, id: \.self) { exercise in
+                                ClassroomExerciseCard(exercise: exercise, assignment: assignment)
+                                    .padding(.horizontal)
+                            }
+                        }
+                        .padding(.vertical)
                     }
                 }
-
-                // No PDF or PDF has 3 or fewer pages - download and analyze all attachments
-                let images = try await assignment.downloadAllAttachments()
-
-                await MainActor.run {
-                    self.multipleImages = images
-                }
-
-                // Analyze based on image count
-                if images.count == 1 {
-                    analyzeAssignment(useCloud: false)
-                } else {
-                    analyzeMultipleImages(images: images, useCloud: false)
-                }
-            } catch {
-                analysisError = error.localizedDescription
-                AppLogger.google.error("Failed to download attachments", error: error)
             }
+        }
+        .navigationBarHidden(true)
+    }
+
+    // MARK: - Analysis Progress
+
+    private var analysisProgressView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            if assignment.isDownloadingImage {
+                ProgressView()
+                    .scaleEffect(1.5)
+                Text("Downloading attachments...")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 8)
+            } else if let progress = analysisProgress {
+                ProgressView(value: Double(progress.current), total: Double(progress.total))
+                    .progressViewStyle(.linear)
+                    .frame(maxWidth: 300)
+                Text("Analyzing segment \(progress.current) of \(progress.total)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } else {
+                ProgressView()
+                    .scaleEffect(1.5)
+                Text("Analyzing assignment...")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 8)
+            }
+
+            Spacer()
         }
     }
 
-    private func handlePDFPageSelection(_ pageIndices: [Int]) {
-        guard let pdfFile = selectedPDFFile else {
-            return
-        }
+    // MARK: - Analysis Actions
 
-        showPDFPageSelector = false
+    private func analyzeWithAI(useCloud: Bool) {
+        AppLogger.ui.info("User tapped analyze with \(useCloud ? "Google" : "Apple") AI")
 
         Task {
             do {
-                let images = try await assignment.downloadAndProcessPDF(driveFile: pdfFile, pageIndices: pageIndices)
+                // Download all image/PDF attachments
+                isAnalyzing = true
+                analysisError = nil
+                analysisProgress = nil
 
-                await MainActor.run {
-                    self.multipleImages = images
-                }
+                let images = try await assignment.downloadAllAttachments()
 
-                // Analyze the selected pages
-                if images.count == 1 {
-                    analyzeAssignment(useCloud: false)
+                AppLogger.image.info("Downloaded \(images.count) attachment images for analysis")
+
+                // Combine description text with OCR from images
+                let fullText = assignment.coursework.description ?? ""
+
+                if images.isEmpty {
+                    // Text-only analysis - check if we have extracted text from ODT
+                    if let extractedText = assignment.extractedText, !extractedText.isEmpty {
+                        AppLogger.ai.info("Using extracted text from ODT (\(extractedText.count) chars) for analysis")
+                        analyzeTextOnly(text: extractedText, useCloud: useCloud)
+                    } else {
+                        analyzeTextOnly(text: fullText, useCloud: useCloud)
+                    }
+                } else if images.count == 1 {
+                    // Single image analysis
+                    analyzeWithImage(image: images[0], useCloud: useCloud)
                 } else {
-                    analyzeMultipleImages(images: images, useCloud: false)
+                    // Multiple images analysis
+                    analyzeMultipleImages(images: images, useCloud: useCloud)
                 }
+
             } catch {
-                analysisError = error.localizedDescription
-                AppLogger.google.error("Failed to process PDF pages", error: error)
+                await MainActor.run {
+                    isAnalyzing = false
+                    analysisError = error.localizedDescription
+                    AppLogger.google.error("Failed to download attachments for analysis", error: error)
+                }
             }
         }
     }
 
-    private func analyzeAssignment(useCloud: Bool = false) {
-        guard let imageData = assignment.imageData,
-              let image = UIImage(data: imageData) else {
-            return
-        }
+    private func analyzeWithImage(image: UIImage, useCloud: Bool) {
+        let assignmentDescription = assignment.coursework.description ?? ""
 
-        isAnalyzing = true
-        analysisError = nil
-        analysisProgress = nil
-
-        // Step 1: Perform OCR
+        // Perform OCR
         OCRService.shared.recognizeTextWithBlocks(from: image) { result in
             switch result {
             case .success(let ocrResult):
                 DispatchQueue.main.async {
-                    assignment.extractedText = ocrResult.fullText
+                    // Combine assignment description with OCR text
+                    let combinedText: String
+                    if !assignmentDescription.isEmpty {
+                        combinedText = "Assignment Description:\n\(assignmentDescription)\n\nAttachment Content:\n\(ocrResult.fullText)"
+                        AppLogger.ai.info("Combined assignment description (\(assignmentDescription.count) chars) with OCR text (\(ocrResult.fullText.count) chars)")
+                    } else {
+                        combinedText = ocrResult.fullText
+                    }
+
+                    assignment.extractedText = combinedText
+
+                    // Store combined image
+                    if let imageData = image.jpegData(compressionQuality: 0.8) {
+                        assignment.imageData = imageData
+                    }
                 }
 
-                // Step 2: Analyze with AI
+                // Analyze with AI - prepend assignment description to OCR blocks
+                var aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
+
+                // If we have assignment description, add it as a block at the top
+                if !assignmentDescription.isEmpty {
+                    let descriptionBlock = AIAnalysisService.OCRBlock(text: "Assignment Description:\n\(assignmentDescription)\n\nAttachment Content:", y: 1.0)
+                    aiBlocks.insert(descriptionBlock, at: 0)
+                }
+
                 if useCloud {
-                    analyzeWithCloud(image: image, ocrBlocks: ocrResult.blocks)
+                    analyzeWithCloud(image: image, ocrBlocks: aiBlocks)
                 } else {
-                    analyzeWithLocal(image: image, ocrBlocks: ocrResult.blocks)
+                    analyzeWithLocal(image: image, ocrBlocks: aiBlocks)
                 }
 
             case .failure(let error):
@@ -443,95 +370,50 @@ struct AssignmentDetailView: View {
         }
     }
 
-    private func analyzeWithLocal(image: UIImage, ocrBlocks: [OCRService.OCRBlock]) {
-        let aiBlocks = ocrBlocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
-
-        AIAnalysisService.shared.analyzeHomeworkWithSegments(
-            image: image,
-            ocrBlocks: aiBlocks,
-            progressHandler: { current, total in
-                DispatchQueue.main.async {
-                    analysisProgress = (current, total)
-                }
-            }
-        ) { result in
-            DispatchQueue.main.async {
-                isAnalyzing = false
-                analysisProgress = nil
-
-                switch result {
-                case .success(let analysis):
-                    saveAnalysisResult(analysis)
-
-                case .failure(let error):
-                    analysisError = error.localizedDescription
-                    AppLogger.ai.error("Analysis failed", error: error)
-                }
-            }
-        }
-    }
-
-    private func analyzeWithCloud(image: UIImage, ocrBlocks: [OCRService.OCRBlock]) {
-        let aiBlocks = ocrBlocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
-
-        CloudAnalysisService.shared.analyzeHomework(image: image, ocrBlocks: aiBlocks) { result in
-            DispatchQueue.main.async {
-                isAnalyzing = false
-
-                switch result {
-                case .success(let analysis):
-                    saveAnalysisResult(analysis)
-
-                case .failure(let error):
-                    analysisError = error.localizedDescription
-                    AppLogger.cloud.error("Cloud analysis failed", error: error)
-                }
-            }
-        }
-    }
-
-    // MARK: - Multi-Image Analysis
-
     private func analyzeMultipleImages(images: [UIImage], useCloud: Bool) {
-        isAnalyzing = true
-        analysisError = nil
-        analysisProgress = nil
+        let assignmentDescription = assignment.coursework.description ?? ""
 
-        AppLogger.ai.info("Starting multi-image analysis with \(images.count) images")
-
-        // Combine all images into one for OCR
+        // Combine images
         guard let combinedImage = PDFProcessingService.shared.combineImages(images, spacing: 20) else {
             isAnalyzing = false
             analysisError = "Failed to combine images"
             return
         }
 
-        // Perform OCR on combined image
+        // Store combined image
+        if let imageData = combinedImage.jpegData(compressionQuality: 0.8) {
+            assignment.imageData = imageData
+        }
+
+        // Perform OCR
         OCRService.shared.recognizeTextWithBlocks(from: combinedImage) { result in
             switch result {
             case .success(let ocrResult):
                 DispatchQueue.main.async {
-                    assignment.extractedText = ocrResult.fullText
+                    // Combine assignment description with OCR text
+                    let combinedText: String
+                    if !assignmentDescription.isEmpty {
+                        combinedText = "Assignment Description:\n\(assignmentDescription)\n\nAttachment Content:\n\(ocrResult.fullText)"
+                        AppLogger.ai.info("Combined assignment description (\(assignmentDescription.count) chars) with OCR text (\(ocrResult.fullText.count) chars)")
+                    } else {
+                        combinedText = ocrResult.fullText
+                    }
+
+                    assignment.extractedText = combinedText
                 }
 
-                // Analyze with cloud AI (always use cloud for multi-image)
-                let aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
+                // Prepare OCR blocks with assignment description
+                var aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
 
+                // If we have assignment description, add it as a block at the top
+                if !assignmentDescription.isEmpty {
+                    let descriptionBlock = AIAnalysisService.OCRBlock(text: "Assignment Description:\n\(assignmentDescription)\n\nAttachment Content:", y: 1.0)
+                    aiBlocks.insert(descriptionBlock, at: 0)
+                }
+
+                // Always use cloud for multi-image
                 CloudAnalysisService.shared.analyzeHomework(images: images, ocrBlocks: aiBlocks) { result in
-                    DispatchQueue.main.async {
-                        isAnalyzing = false
-                        analysisProgress = nil
-
-                        switch result {
-                        case .success(let analysis):
-                            saveAnalysisResult(analysis)
-                            AppLogger.cloud.info("Multi-image analysis complete - Found \(analysis.exercises.count) exercises")
-
-                        case .failure(let error):
-                            analysisError = error.localizedDescription
-                            AppLogger.cloud.error("Multi-image analysis failed", error: error)
-                        }
-                    }
+                    handleAnalysisResult(result)
                 }
 
             case .failure(let error):
@@ -544,6 +426,62 @@ struct AssignmentDetailView: View {
         }
     }
 
+    private func analyzeTextOnly(text: String, useCloud: Bool) {
+        assignment.extractedText = text
+
+        if useCloud {
+            // Use cloud analysis for text-only
+            CloudAnalysisService.shared.analyzeTextOnly(text: text) { result in
+                handleAnalysisResult(result)
+            }
+        } else {
+            // Use local Apple AI for text-only
+            AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
+                handleAnalysisResult(result)
+            }
+        }
+    }
+
+    private func analyzeWithLocal(image: UIImage, ocrBlocks: [AIAnalysisService.OCRBlock]) {
+        AIAnalysisService.shared.analyzeHomeworkWithSegments(
+            image: image,
+            ocrBlocks: ocrBlocks,
+            progressHandler: { current, total in
+                DispatchQueue.main.async {
+                    analysisProgress = (current, total)
+                }
+            }
+        ) { result in
+            handleAnalysisResult(result)
+        }
+    }
+
+    private func analyzeWithCloud(image: UIImage, ocrBlocks: [AIAnalysisService.OCRBlock]) {
+        CloudAnalysisService.shared.analyzeHomework(image: image, ocrBlocks: ocrBlocks) { result in
+            handleAnalysisResult(result)
+        }
+    }
+
+    private func handleAnalysisResult(_ result: Result<AIAnalysisService.AnalysisResult, Error>) {
+        DispatchQueue.main.async {
+            isAnalyzing = false
+            analysisProgress = nil
+
+            switch result {
+            case .success(let analysis):
+                saveAnalysisResult(analysis)
+                AppLogger.ai.info("Analysis complete - Found \(analysis.exercises.count) exercises")
+
+                // Navigate to exercises view after successful analysis
+                showExercises = true
+
+            case .failure(let error):
+                analysisError = error.localizedDescription
+                AppLogger.ai.error("Analysis failed", error: error)
+            }
+        }
+    }
+
     private func saveAnalysisResult(_ analysis: AIAnalysisService.AnalysisResult) {
         do {
             let encoder = JSONEncoder()
@@ -552,177 +490,344 @@ struct AssignmentDetailView: View {
             if let jsonString = String(data: jsonData, encoding: .utf8) {
                 assignment.analysisJSON = jsonString
 
-                // Extract subject from the first exercise with a subject
+                // Extract subject
                 if let subject = analysis.exercises.first(where: { $0.subject != nil })?.subject {
                     assignment.subject = subject
                 }
 
                 assignment.saveToCache()
-                AppLogger.persistence.info("Analysis saved to cache - Exercises: \(analysis.exercises.count)")
+                AppLogger.persistence.info("Analysis saved - Exercises: \(analysis.exercises.count)")
             }
         } catch {
             AppLogger.persistence.error("Error encoding analysis", error: error)
         }
     }
 
-    // MARK: - Text Analysis
+    private func handlePDFPageSelection(_ pageIndices: [Int], pdfFile: DriveFile) {
+        showPDFPageSelector = false
 
-    /// Analyze text-only assignment using AI (no image available)
-    private func analyzeTextOnly(text: String) {
-        isAnalyzing = true
-        analysisError = nil
+        Task {
+            do {
+                let images = try await assignment.downloadAndProcessPDF(driveFile: pdfFile, pageIndices: pageIndices)
 
-        // Store the original text as extractedText
-        assignment.extractedText = text
-
-        AppLogger.ai.info("Starting text analysis for assignment (Apple AI)")
-
-        // Use AI analysis service for text-only homework
-        AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
-            DispatchQueue.main.async {
-                isAnalyzing = false
-
-                switch result {
-                case .success(let analysis):
-                    AppLogger.ai.info("Text analysis complete - Found \(analysis.exercises.count) exercises")
-                    saveAnalysisResult(analysis)
-
-                case .failure(let error):
-                    AppLogger.ai.error("Text analysis failed", error: error)
-                    analysisError = error.localizedDescription
+                await MainActor.run {
+                    if images.count == 1 {
+                        analyzeWithImage(image: images[0], useCloud: false)
+                    } else {
+                        analyzeMultipleImages(images: images, useCloud: false)
+                    }
                 }
-            }
-        }
-    }
-
-    /// Analyze text-only assignment using Cloud AI (Google Gemini)
-    private func analyzeTextOnlyCloud(text: String) {
-        isAnalyzing = true
-        analysisError = nil
-
-        // Store the original text as extractedText
-        assignment.extractedText = text
-
-        AppLogger.cloud.info("Starting text analysis for assignment (Google AI)")
-
-        // Use Cloud analysis service for text-only homework
-        // Note: CloudAnalysisService doesn't have a dedicated text-only method yet,
-        // so we fall back to Apple AI for text analysis
-        AIAnalysisService.shared.analyzeTextOnly(text: text) { result in
-            DispatchQueue.main.async {
-                isAnalyzing = false
-
-                switch result {
-                case .success(let analysis):
-                    AppLogger.cloud.info("Text analysis complete - Found \(analysis.exercises.count) exercises")
-                    saveAnalysisResult(analysis)
-
-                case .failure(let error):
-                    AppLogger.cloud.error("Text analysis failed", error: error)
+            } catch {
+                await MainActor.run {
                     analysisError = error.localizedDescription
+                    AppLogger.google.error("Failed to process PDF pages", error: error)
                 }
             }
         }
     }
 }
 
-// MARK: - Supporting Views
+// MARK: - Attachment Row Button
 
-/// Summary card showing count of items
-private struct SummaryCard: View {
-    let icon: String
-    let title: String
-    let count: Int
-    let color: Color
+private struct AttachmentRowButton: View {
+    let material: Material
+    let onTap: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(color)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(count)")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                Text(title)
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Icon
+                if let driveFile = material.driveFile?.driveFile {
+                    let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()
+
+                    if fileExtension == "pdf" {
+                        Image(systemName: "doc.fill")
+                            .font(.title2)
+                            .foregroundColor(.red)
+                    } else if fileExtension == "odt" {
+                        Image(systemName: "doc.text.fill")
+                            .font(.title2)
+                            .foregroundColor(.purple)
+                    } else if ["jpg", "jpeg", "png", "gif", "heic", "heif", "bmp"].contains(fileExtension) {
+                        Image(systemName: "photo.fill")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                    } else {
+                        Image(systemName: "doc.fill")
+                            .font(.title2)
+                            .foregroundColor(.gray)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(driveFile.title)
+                            .font(.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .lineLimit(2)
+
+                        Text(fileExtension.uppercased())
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else if let link = material.link {
+                    Image(systemName: "link")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(link.title ?? "Link")
+                            .font(.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+
+                        Text(link.url)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+            .padding()
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(10)
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.1))
-        .cornerRadius(12)
+        .buttonStyle(.plain)
     }
 }
 
-/// A simple view to display the assignment image
-private struct AssignmentImageView: View {
-    @ObservedObject var assignment: ClassroomAssignment
+// MARK: - Attachment Content View
+
+private struct AttachmentContentView: View {
+    let material: Material
+    let onBack: () -> Void
+    @State private var isLoading = false
+    @State private var fileData: Data?
+    @State private var errorMessage: String?
 
     var body: some View {
-        ScrollView {
-            if let imageData = assignment.imageData,
-               let uiImage = UIImage(data: imageData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .cornerRadius(12)
-                    .shadow(radius: 5)
-                    .padding()
-            } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "photo")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    Text("No Image")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
+        VStack(spacing: 0) {
+            // Navigation bar
+            HStack {
+                Button(action: onBack) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
                 }
                 .padding()
+
+                Spacer()
+            }
+            .background(Color(UIColor.systemBackground))
+
+            Divider()
+
+            // Content
+            if isLoading {
+                VStack(spacing: 16) {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Text("Loading attachment...")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            } else if let error = errorMessage {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 60))
+                        .foregroundColor(.red)
+                    Text("Failed to load attachment")
+                        .font(.headline)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            } else {
+                attachmentContent
             }
         }
-        .navigationTitle("Image")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .onAppear {
+            loadAttachment()
+        }
     }
-}
 
-/// A simple view to display the assignment original text
-private struct AssignmentTextView: View {
-    @ObservedObject var assignment: ClassroomAssignment
+    @ViewBuilder
+    private var attachmentContent: some View {
+        if let driveFile = material.driveFile?.driveFile {
+            driveFileViewer(driveFile)
+        } else if let link = material.link {
+            linkViewer(link)
+        } else {
+            Text("Unsupported attachment type")
+                .foregroundColor(.secondary)
+        }
+    }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Show assignment description if available
-                if let description = assignment.coursework.description, !description.isEmpty {
-                    Text(description)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                        .textSelection(.enabled)
-                        .padding()
-                } else {
-                    // Empty state
-                    VStack(spacing: 16) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 48))
-                            .foregroundColor(.secondary)
-                        Text("No Text Available")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
+    @ViewBuilder
+    private func driveFileViewer(_ driveFile: DriveFile) -> some View {
+        let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()
+
+        if ["jpg", "jpeg", "png", "gif", "heic", "heif", "bmp"].contains(fileExtension) {
+            if let fileData = fileData, let image = UIImage(data: fileData) {
+                GeometryReader { geometry in
+                    ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding()
                 }
             }
-            .padding()
+        } else if fileExtension == "pdf" {
+            if let fileData = fileData, let pdfDocument = PDFDocument(data: fileData) {
+                AssignmentPDFView(document: pdfDocument)
+            }
+        } else if fileExtension == "odt" {
+            if let fileData = fileData {
+                ODTViewerContent(odtData: fileData, fileName: driveFile.title)
+            }
         }
-        .navigationTitle("Original")
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func linkViewer(_ link: Link) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "link.circle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.orange)
+
+            if let title = link.title {
+                Text(title)
+                    .font(.headline)
+            }
+
+            Text(link.url)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .padding()
+
+            if let url = URL(string: link.url) {
+                SwiftUI.Link("Open Link", destination: url)
+                    .buttonStyle(.borderedProminent)
+            }
+            Spacer()
+        }
+    }
+
+    private func loadAttachment() {
+        guard let driveFile = material.driveFile?.driveFile else { return }
+
+        isLoading = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let data = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
+                await MainActor.run {
+                    fileData = data
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
+            }
+        }
     }
 }
 
-/// Exercise card for classroom assignments
+// MARK: - ODT Viewer Content
+
+private struct ODTViewerContent: View {
+    let odtData: Data
+    let fileName: String
+    @State private var content: ODTProcessingService.ODTContent?
+    @State private var isProcessing = true
+
+    var body: some View {
+        Group {
+            if isProcessing {
+                VStack(spacing: 16) {
+                    Spacer()
+                    ProgressView()
+                    Text("Processing ODT...")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            } else if let content = content {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if !content.text.isEmpty {
+                            Text(content.text)
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .padding()
+                        }
+
+                        ForEach(Array(content.images.enumerated()), id: \.offset) { index, image in
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .cornerRadius(8)
+                                .padding(.horizontal)
+                        }
+                    }
+                    .padding(.vertical)
+                }
+            }
+        }
+        .task {
+            // Process ODT in background
+            let extractedContent = await Task.detached {
+                await ODTProcessingService.shared.extractContent(from: odtData)
+            }.value
+
+            content = extractedContent
+            isProcessing = false
+        }
+    }
+
+    init(odtData: Data, fileName: String) {
+        self.odtData = odtData
+        self.fileName = fileName
+    }
+}
+
+// MARK: - PDF Viewer
+
+import PDFKit
+
+private struct AssignmentPDFView: UIViewRepresentable {
+    let document: PDFDocument
+
+    func makeUIView(context: Context) -> PDFView {
+        let pdfView = PDFView()
+        pdfView.document = document
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayDirection = .vertical
+        return pdfView
+    }
+
+    func updateUIView(_ uiView: PDFView, context: Context) {
+        uiView.document = document
+    }
+}
+
+// MARK: - Exercise Card
+
 private struct ClassroomExerciseCard: View {
     let exercise: AIAnalysisService.Exercise
     @ObservedObject var assignment: ClassroomAssignment
@@ -736,26 +841,5 @@ private struct ClassroomExerciseCard: View {
                 set: { assignment.exerciseAnswers = $0; assignment.saveToCache() }
             )
         )
-    }
-}
-
-#Preview {
-    let mockCoursework = ClassroomCoursework(
-        id: "1",
-        courseId: "course1",
-        title: "Math Homework - Chapter 5",
-        description: "Complete exercises 1-10 from Chapter 5",
-        materials: nil,
-        state: "PUBLISHED",
-        creationTime: "2025-10-11T10:00:00Z",
-        updateTime: nil,
-        dueDate: nil,
-        maxPoints: 100,
-        workType: "ASSIGNMENT",
-        alternateLink: nil
-    )
-
-    NavigationView {
-        AssignmentDetailView(assignment: ClassroomAssignment(coursework: mockCoursework, courseName: "Mathematics"))
     }
 }

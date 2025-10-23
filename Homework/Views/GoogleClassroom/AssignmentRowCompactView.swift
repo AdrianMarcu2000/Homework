@@ -17,8 +17,8 @@ struct AssignmentRowCompactView: View {
     var body: some View {
         HStack(spacing: 8) {
             // Subject indicator - only show if analyzed
-            if let subject = assignmentWrapper.subject {
-                Image(systemName: subjectIcon(for: subject))
+            if assignmentWrapper.analysisResult != nil {
+                Image(systemName: subjectIcon(for: assignmentWrapper.subject))
                     .foregroundColor(.blue)
                     .font(.body)
             }

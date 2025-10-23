@@ -9,17 +9,17 @@
 import Foundation
 
 /// Represents an exercise segment
-struct Exercise: Codable, Hashable {
-    let exerciseNumber: String
-    let type: String
-    let fullContent: String
-    let startY: Double
-    let endY: Double
-    let subject: String? // mathematics, language, science, history, etc.
-    let inputType: String? // text, canvas, both
+public struct Exercise: Codable, Hashable {
+    public let exerciseNumber: String
+    public let type: String
+    public let fullContent: String
+    public let startY: Double
+    public let endY: Double
+    public let subject: String? // mathematics, language, science, history, etc.
+    public let inputType: String? // text, canvas, both
 
     // Custom decoding to handle null exerciseNumber and optional fields
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         // If exerciseNumber is null, use "Unknown"
@@ -38,7 +38,7 @@ struct Exercise: Codable, Hashable {
     }
 
     // Regular init for non-decoded creation
-    init(exerciseNumber: String, type: String, fullContent: String, startY: Double, endY: Double, subject: String? = nil, inputType: String? = "canvas") {
+    public init(exerciseNumber: String, type: String, fullContent: String, startY: Double, endY: Double, subject: String? = nil, inputType: String? = "canvas") {
         self.exerciseNumber = exerciseNumber
         self.type = type
         self.fullContent = fullContent

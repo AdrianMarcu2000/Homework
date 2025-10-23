@@ -17,7 +17,7 @@ import OSLog
 /// - Image selection from camera or photo library
 /// - OCR text extraction from images
 /// - Saving homework items to Core Data
-class HomeworkCaptureViewModel: ObservableObject {
+class HomeworkCaptureViewModel: ObservableObject, HomeworkAnalyzer {
     // MARK: - Published Properties
     
     /// The image selected from camera or photo library

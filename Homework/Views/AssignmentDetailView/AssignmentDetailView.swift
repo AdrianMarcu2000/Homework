@@ -548,10 +548,7 @@ struct AssignmentDetailView: View {
             if let jsonString = String(data: jsonData, encoding: .utf8) {
                 assignment.analysisJSON = jsonString
 
-                // Extract subject
-                if let subject = analysis.exercises.first(where: { $0.subject != nil })?.subject {
-                    assignment.subject = subject
-                }
+                // subject is now automatically computed from exercises via AnalyzableHomework protocol
 
                 assignment.saveToCache()
                 AppLogger.persistence.info("Analysis saved - Exercises: \(analysis.exercises.count)")

@@ -66,7 +66,7 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
     @Published var downloadError: String?
     @Published var status: AssignmentStatus = .new
     @Published var isSyncingStatus: Bool = false
-    @Published var subject: String?
+    // subject property is now provided by AnalyzableHomework protocol extension
 
     var id: String {
         coursework.id
@@ -340,10 +340,6 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
            let answers = try? JSONDecoder().decode([String: Data].self, from: answersData) {
             self.exerciseAnswers = answers
         }
-
-        if let subject = defaults.string(forKey: "\(cacheKey)_subject") {
-            self.subject = subject
-        }
     }
 
     func saveToCache() {
@@ -362,12 +358,26 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
             defaults.set(answersData, forKey: "\(cacheKey)_answers")
         }
 
-        if let subject = subject {
-            defaults.set(subject, forKey: "\(cacheKey)_subject")
-        }
-
         // Force synchronize to ensure write completes immediately
         defaults.synchronize()
+    }
+
+    // MARK: - AnalyzableHomework Protocol Methods
+
+    /// Save the analysis result to UserDefaults cache
+    func saveAnalysis(_ analysis: AnalysisResult) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let jsonData = try encoder.encode(analysis)
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            self.analysisJSON = jsonString
+        }
+        saveToCache()
+    }
+
+    /// Save exercise answers to UserDefaults cache
+    func saveAnswers() throws {
+        saveToCache()
     }
 
     // MARK: - Status Syncing

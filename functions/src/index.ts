@@ -186,7 +186,7 @@ Analyze each segment of text and classify it as EITHER 'EXERCISE' OR 'SKIP'.
 
 EXERCISE (type: 'EXERCISE'):
 - Numbered problems or tasks (e.g., "1.", "2.", "a)", "Exercise 8")
-- Content with imperative verbs: "Find", "Calculate", "Solve", "Show", "Prove", "Determine", "Complete", "Fill in", "Draw", "Explain", "Write", "Compute"
+- Content with imperative verbs: "Task", "Find", "Calculate", "Solve", "Show", "Prove", "Determine", "Complete", "Fill in", "Draw", "Explain", "Write", "Compute"
 - Questions with question marks asking students to perform tasks
 - Problems or exercises that students need to solve
 - Any content that instructs students to DO something or ANSWER something

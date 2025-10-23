@@ -34,12 +34,186 @@ struct AssignmentDetailView: View {
             AttachmentContentView(material: attachment, onBack: {
                 selectedAttachment = nil
             })
-        } else if showExercises && hasAnalysis {
-            // Show exercises view
-            exercisesView
         } else {
-            // Show assignment overview with analyze/view exercises buttons
-            assignmentOverviewView
+            // Split view: Assignment overview on left, exercises panel on right
+            splitViewContent
+        }
+    }
+
+    // MARK: - Split View Content
+
+    private var splitViewContent: some View {
+        GeometryReader { geometry in
+            // Full-width toggle between assignment overview and exercises
+            if !showExercises {
+                // Assignment overview view
+                GeometryReader { contentGeometry in
+                    ZStack(alignment: .trailing) {
+                        assignmentOverviewView
+                            .frame(width: geometry.size.width)
+
+                        // Floating Exercises button - right middle
+                        if hasAnalysis, let analysis = assignment.analysisResult {
+                            Button(action: {
+                                AppLogger.ui.info("User opened exercises panel for assignment")
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    showExercises = true
+                                }
+                            }) {
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("Exercises")
+                                            .font(.headline)
+                                            .fontWeight(.bold)
+                                        Text("\(analysis.exercises.count) found")
+                                            .font(.caption)
+                                            .opacity(0.9)
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.blue, Color.blue.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .cornerRadius(16)
+                                .shadow(color: Color.blue.opacity(0.3), radius: 12, x: -2, y: 0)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 24)
+                            .position(x: contentGeometry.size.width - 100, y: contentGeometry.size.height / 2)
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                }
+                .frame(width: geometry.size.width)
+            }
+
+            // Exercises view with preview
+            if showExercises, let analysis = assignment.analysisResult, !analysis.exercises.isEmpty {
+                GeometryReader { contentGeometry in
+                    ZStack(alignment: .leading) {
+                        ScrollView {
+                            VStack(spacing: 16) {
+                                // Exercises content
+                                ForEach(analysis.exercises, id: \.self) { exercise in
+                                    ClassroomExerciseCard(exercise: exercise, assignment: assignment)
+                                        .padding(.horizontal, 20)
+                                }
+                            }
+                            .padding(.bottom)
+                        }
+                        .frame(width: geometry.size.width)
+                        .background(Color(UIColor.systemBackground))
+
+                        // Back button - aligned to middle-left at same vertical position as Exercises button
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Navigation button
+                            Button(action: {
+                                AppLogger.ui.info("User navigated to assignment overview from exercises")
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    showExercises = false
+                                }
+                            }) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.system(size: 16, weight: .semibold))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Assignment")
+                                            .font(.headline)
+                                            .fontWeight(.bold)
+                                        Text("View details")
+                                            .font(.caption)
+                                            .opacity(0.9)
+                                    }
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.blue, Color.blue.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .cornerRadius(16)
+                                .shadow(color: Color.blue.opacity(0.3), radius: 12, x: 2, y: 0)
+                            }
+                            .buttonStyle(.plain)
+
+                            // Compact preview
+                            if assignment.imageData != nil, let imageData = assignment.imageData, let uiImage = UIImage(data: imageData) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: 120, maxHeight: 100)
+                                    .cornerRadius(6)
+                                    .shadow(radius: 2)
+                            } else if let description = assignment.coursework.description, !description.isEmpty {
+                                Text(description)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(5)
+                                    .padding(8)
+                                    .frame(maxWidth: 120, alignment: .leading)
+                                    .background(Color(UIColor.secondarySystemBackground))
+                                    .cornerRadius(6)
+                            }
+                        }
+                        .padding(.leading, 24)
+                        .position(x: 100, y: contentGeometry.size.height / 2)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .frame(width: geometry.size.width)
+                .id(assignment.analysisJSON ?? "")
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .navigationTitle(assignment.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                // Apple AI button
+                if AIAnalysisService.shared.isModelAvailable {
+                    Button(action: { analyzeWithAI(useCloud: false) }) {
+                        Image(systemName: "apple.logo")
+                            .font(.body)
+                    }
+                    .disabled(isAnalyzing)
+                }
+
+                // Google AI button
+                if useCloudAnalysis {
+                    Button(action: { analyzeWithAI(useCloud: true) }) {
+                        Image(systemName: "cloud")
+                            .font(.body)
+                    }
+                    .disabled(isAnalyzing)
+                }
+            }
+        }
+        .sheet(isPresented: $showPDFPageSelector) {
+            if let pdfData = downloadedPDFData, let pdfFile = selectedPDFFile {
+                PDFPageSelectorView(
+                    pdfData: pdfData,
+                    onConfirm: { pageIndices in
+                        handlePDFPageSelection(pageIndices, pdfFile: pdfFile)
+                    },
+                    onCancel: {
+                        showPDFPageSelector = false
+                        downloadedPDFData = nil
+                        selectedPDFFile = nil
+                    }
+                )
+            }
         }
     }
 
@@ -88,88 +262,11 @@ struct AssignmentDetailView: View {
                             }
                         }
 
-                        // AI Analysis / Re-analyze buttons
-                        VStack(spacing: 12) {
-                            Text(hasAnalysis ? "Actions" : "Analyze with AI")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            HStack(spacing: 12) {
-                                // Apple AI button
-                                if AIAnalysisService.shared.isModelAvailable {
-                                    Button(action: { analyzeWithAI(useCloud: false) }) {
-                                        VStack(spacing: 6) {
-                                            Image(systemName: "apple.logo")
-                                                .font(.title2)
-                                            Text(hasAnalysis ? "Re-analyze" : "Analyze with")
-                                                .font(.caption)
-                                            if !hasAnalysis {
-                                                Text("Apple AI")
-                                                    .font(.caption)
-                                                    .fontWeight(.semibold)
-                                            }
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, hasAnalysis ? 12 : 16)
-                                        .background(Color.purple.opacity(0.1))
-                                        .foregroundColor(.purple)
-                                        .cornerRadius(10)
-                                    }
-                                    .disabled(isAnalyzing)
-                                }
-
-                                // Google AI button
-                                if useCloudAnalysis {
-                                    Button(action: { analyzeWithAI(useCloud: true) }) {
-                                        VStack(spacing: 6) {
-                                            Image(systemName: "cloud.fill")
-                                                .font(.title2)
-                                            Text(hasAnalysis ? "Re-analyze" : "Analyze with")
-                                                .font(.caption)
-                                            if !hasAnalysis {
-                                                Text("Google AI")
-                                                    .font(.caption)
-                                                    .fontWeight(.semibold)
-                                            }
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, hasAnalysis ? 12 : 16)
-                                        .background(Color.green.opacity(0.1))
-                                        .foregroundColor(.green)
-                                        .cornerRadius(10)
-                                    }
-                                    .disabled(isAnalyzing)
-                                }
-
-                                // View Exercises button (only when analyzed)
-                                if hasAnalysis {
-                                    Button(action: { showExercises = true }) {
-                                        VStack(spacing: 6) {
-                                            Image(systemName: "pencil.and.list.clipboard")
-                                                .font(.title2)
-                                            Text("View Exercises")
-                                                .font(.caption)
-                                                .fontWeight(.medium)
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
-                                        .background(Color.blue.opacity(0.1))
-                                        .foregroundColor(.blue)
-                                        .cornerRadius(10)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 12)
                     }
                     .padding(.vertical)
                 }
             }
         }
-        .navigationTitle(assignment.title)
-        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showPDFPageSelector) {
             if let pdfData = downloadedPDFData, let pdfFile = selectedPDFFile {
                 PDFPageSelectorView(
@@ -185,61 +282,6 @@ struct AssignmentDetailView: View {
                 )
             }
         }
-    }
-
-    // MARK: - Exercises View (Analyzed)
-
-    private var exercisesView: some View {
-        VStack(spacing: 0) {
-            if isAnalyzing {
-                analysisProgressView
-            } else if let analysis = assignment.analysisResult {
-                VStack(spacing: 0) {
-                    // Custom navigation bar
-                    HStack {
-                        Button(action: { showExercises = false }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                Text("Back")
-                            }
-                        }
-                        .padding()
-
-                        Spacer()
-
-                        Text("Exercises")
-                            .font(.headline)
-
-                        Spacer()
-
-                        // Invisible button for symmetry
-                        Button(action: {}) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                Text("Back")
-                            }
-                        }
-                        .padding()
-                        .opacity(0)
-                    }
-                    .background(Color(UIColor.systemBackground))
-
-                    Divider()
-
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            // Exercises
-                            ForEach(analysis.exercises, id: \.self) { exercise in
-                                ClassroomExerciseCard(exercise: exercise, assignment: assignment)
-                                    .padding(.horizontal)
-                            }
-                        }
-                        .padding(.vertical)
-                    }
-                }
-            }
-        }
-        .navigationBarHidden(true)
     }
 
     // MARK: - Analysis Progress

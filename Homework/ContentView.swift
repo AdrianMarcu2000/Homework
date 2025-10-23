@@ -274,213 +274,206 @@ private struct HomeworkExercisesDetailView: View {
 
                     Spacer()
                 }
-            } else if showExercises, let analysis = item.analysisResult, !analysis.exercises.isEmpty {
-                VStack(spacing: 0) {
-                    // Action buttons at the top
-                    HStack(spacing: 12) {
-                        // Back to Original button
-                        Button(action: {
-                            AppLogger.ui.info("User tapped back to original")
-                            showExercises = false
-                        }) {
-                            VStack(spacing: 6) {
-                                Image(systemName: item.imageData != nil ? "photo.fill" : "doc.text.fill")
-                                    .font(.title2)
-                                Text("View Original")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.blue.opacity(0.1))
-                            .foregroundColor(.blue)
-                            .cornerRadius(10)
-                        }
-
-                        // Analyze with Apple Intelligence button
-                        if AIAnalysisService.shared.isModelAvailable {
-                            Button(action: {
-                                isReanalyzing = true
-                                viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
-                            }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "apple.logo")
-                                        .font(.title2)
-                                    // Show "Re-analyze" if analysis exists, otherwise "Apple AI"
-                                    Text(item.analysisResult != nil ? "Re-analyze" : "Apple AI")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.purple.opacity(0.1))
-                                .foregroundColor(.purple)
-                                .cornerRadius(10)
-                            }
-                            .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
-                        }
-
-                        // Analyze with Google Gemini button or upgrade/enable AI prompt
-                        if useCloudAnalysis && item.usedAnalysisMethod == .cloudAI {
-                            // Already analyzed with cloud, show cloud reanalysis button
-                            Button(action: {
-                                isReanalyzing = true
-                                viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
-                            }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "cloud.fill")
-                                        .font(.title2)
-                                    // Show "Re-analyze" since this only shows when already analyzed with cloud
-                                    Text("Re-analyze")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.green.opacity(0.1))
-                                .foregroundColor(.green)
-                                .cornerRadius(10)
-                            }
-                            .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
-                        } else if let upgrade = getUpgradeOption() {
-                            // Show enable/upgrade AI button
-                            Button(action: {
-                                if upgrade.opensSettings {
-                                    // Open settings to enable cloud AI or subscribe
-                                    showingSettings = true
-                                } else {
-                                    // Perform analysis
-                                    isReanalyzing = true
-                                    viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: upgrade.method == .cloudAI)
-                                }
-                            }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: upgrade.icon)
-                                        .font(.title2)
-                                    Text(upgrade.label)
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(upgrade.color.opacity(0.1))
-                                .foregroundColor(upgrade.color)
-                                .cornerRadius(10)
-                            }
-                            .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-
-                    Divider()
-
-                    // Exercises content
-                    ScrollView {
-                        LessonsAndExercisesView(analysis: analysis, homeworkItem: item)
-                            .padding()
-                    }
-                    .id(item.analysisJSON ?? "")
-                }
             } else {
-                // Show original content (either no analysis exists, or user wants to see original)
-                VStack(spacing: 0) {
-                    // Action buttons at the top
-                    HStack(spacing: 12) {
-                        // View Exercises button (only if analysis exists)
-                        if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
-                            Button(action: {
-                                AppLogger.ui.info("User tapped view exercises")
-                                showExercises = true
-                            }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "pencil.and.list.clipboard")
-                                        .font(.title2)
-                                    Text("View Exercises")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
+                // Split view: Active view takes 75%, inactive sidebar 25%
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        // Left side: Original content (only shown when not showing exercises)
+                        if !showExercises {
+                            GeometryReader { contentGeometry in
+                                ZStack(alignment: .trailing) {
+                                    ScrollView {
+                                        VStack(spacing: 20) {
+                                            // Original image/text
+                                            if item.imageData != nil, let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
+                                                Image(uiImage: uiImage)
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .cornerRadius(12)
+                                                    .shadow(radius: 5)
+                                                    .padding(.horizontal)
+                                            } else if let extractedText = item.extractedText, !extractedText.isEmpty {
+                                                VStack(alignment: .leading, spacing: 12) {
+                                                    Text("Extracted Text")
+                                                        .font(.headline)
+                                                        .foregroundColor(.secondary)
+                                                        .padding(.horizontal)
+
+                                                    Text(extractedText)
+                                                        .font(.body)
+                                                        .foregroundColor(.primary)
+                                                        .textSelection(.enabled)
+                                                        .padding()
+                                                        .background(Color(UIColor.secondarySystemBackground))
+                                                        .cornerRadius(12)
+                                                        .padding(.horizontal)
+                                                }
+                                            } else {
+                                                VStack(spacing: 16) {
+                                                    Image(systemName: "doc.text.image")
+                                                        .font(.system(size: 48))
+                                                        .foregroundColor(.secondary)
+                                                    Text("No Content")
+                                                        .font(.headline)
+                                                        .foregroundColor(.secondary)
+                                                }
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 60)
+                                            }
+                                        }
+                                        .padding(.vertical)
+                                    }
+                                    .frame(width: geometry.size.width)
+
+                                    // Floating Exercises button - right middle (only when not showing exercises)
+                                    if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
+                                        Button(action: {
+                                            AppLogger.ui.info("User opened exercises panel")
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                showExercises = true
+                                            }
+                                        }) {
+                                            HStack(spacing: 10) {
+                                                VStack(alignment: .trailing, spacing: 2) {
+                                                    Text("Exercises")
+                                                        .font(.headline)
+                                                        .fontWeight(.bold)
+                                                    Text("\(analysis.exercises.count) found")
+                                                        .font(.caption)
+                                                        .opacity(0.9)
+                                                }
+
+                                                Image(systemName: "chevron.right")
+                                                    .font(.system(size: 16, weight: .semibold))
+                                            }
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 20)
+                                            .padding(.vertical, 14)
+                                            .background(
+                                                LinearGradient(
+                                                    colors: [Color.blue, Color.blue.opacity(0.85)],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .cornerRadius(16)
+                                            .shadow(color: Color.blue.opacity(0.3), radius: 12, x: -2, y: 0)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(.trailing, 24)
+                                        .position(x: contentGeometry.size.width - 100, y: contentGeometry.size.height / 2)
+                                        .transition(.scale.combined(with: .opacity))
+                                    }
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundColor(.blue)
-                                .cornerRadius(10)
                             }
+                            .frame(width: geometry.size.width)
                         }
 
-                        // Analyze with Apple Intelligence button
+                        // Right side: Exercises panel (full width when showing)
+                        if showExercises, let analysis = item.analysisResult, !analysis.exercises.isEmpty {
+                            GeometryReader { contentGeometry in
+                                ZStack(alignment: .leading) {
+                                    ScrollView {
+                                        VStack(spacing: 16) {
+                                            // Exercises content
+                                            LessonsAndExercisesView(analysis: analysis, homeworkItem: item)
+                                                .padding(.horizontal, 20)
+                                        }
+                                        .padding(.bottom)
+                                    }
+                                    .frame(width: geometry.size.width)
+                                    .background(Color(UIColor.systemBackground))
+
+                                    // Back button - aligned to middle-left at same vertical position as Exercises button
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        // Navigation button
+                                        Button(action: {
+                                            AppLogger.ui.info("User navigated to original from exercises")
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                showExercises = false
+                                            }
+                                        }) {
+                                            HStack(spacing: 10) {
+                                                Image(systemName: "chevron.left")
+                                                    .font(.system(size: 16, weight: .semibold))
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text("Original")
+                                                        .font(.headline)
+                                                        .fontWeight(.bold)
+                                                    Text("View homework")
+                                                        .font(.caption)
+                                                        .opacity(0.9)
+                                                }
+                                            }
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 20)
+                                            .padding(.vertical, 14)
+                                            .background(
+                                                LinearGradient(
+                                                    colors: [Color.blue, Color.blue.opacity(0.85)],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .cornerRadius(16)
+                                            .shadow(color: Color.blue.opacity(0.3), radius: 12, x: 2, y: 0)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        // Compact thumbnail preview
+                                        if item.imageData != nil, let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
+                                            Image(uiImage: uiImage)
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(maxWidth: 120, maxHeight: 100)
+                                                .cornerRadius(6)
+                                                .shadow(radius: 2)
+                                        } else if let extractedText = item.extractedText, !extractedText.isEmpty {
+                                            Text(extractedText)
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(5)
+                                                .padding(8)
+                                                .frame(maxWidth: 120, alignment: .leading)
+                                                .background(Color(UIColor.secondarySystemBackground))
+                                                .cornerRadius(6)
+                                        }
+                                    }
+                                    .padding(.leading, 24)
+                                    .position(x: 100, y: contentGeometry.size.height / 2)
+                                    .transition(.scale.combined(with: .opacity))
+                                }
+                            }
+                            .frame(width: geometry.size.width)
+                            .id(item.analysisJSON ?? "")
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }
+                }
+                .toolbar {
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                        // Apple AI button
                         if item.analysisStatus != .inProgress && AIAnalysisService.shared.isModelAvailable {
                             Button(action: {
                                 isReanalyzing = true
                                 viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
                             }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "apple.logo")
-                                        .font(.title2)
-                                    // Show "Re-analyze" if analysis exists, otherwise "Apple AI"
-                                    Text(item.analysisResult != nil ? "Re-analyze" : "Apple AI")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.purple.opacity(0.1))
-                                .foregroundColor(.purple)
-                                .cornerRadius(10)
+                                Image(systemName: "apple.logo")
+                                    .font(.body)
                             }
                             .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
                         }
 
-                        // Analyze with Google Gemini button
+                        // Google AI button
                         if useCloudAnalysis && item.analysisStatus != .inProgress {
                             Button(action: {
                                 isReanalyzing = true
                                 viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
                             }) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "cloud.fill")
-                                        .font(.title2)
-                                    // Show "Re-analyze" if analysis exists, otherwise "Google AI"
-                                    Text(item.analysisResult != nil ? "Re-analyze" : "Google AI")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.green.opacity(0.1))
-                                .foregroundColor(.green)
-                                .cornerRadius(10)
+                                Image(systemName: "cloud")
+                                    .font(.body)
                             }
                             .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-
-                    Divider()
-
-                    // Original content
-                    ZStack {
-                        if item.imageData != nil {
-                            HomeworkImageView(item: item)
-                        } else {
-                            HomeworkTextView(item: item)
-                        }
-
-                        if item.analysisStatus == .inProgress {
-                            Color.black.opacity(0.4)
-                                .edgesIgnoringSafeArea(.all)
-                            VStack {
-                                ProgressView()
-                                    .scaleEffect(1.5)
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                Text("Analyzing...")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .padding(.top)
-                            }
                         }
                     }
                 }

@@ -10,111 +10,6 @@ import Foundation
 import FirebaseAppCheck
 import OSLog
 
-/// Cloud response structure matching Firebase function output
-struct CloudAnalysisResult: Sendable {
-    let summary: String
-    let sections: [Section]
-
-    struct Section: Sendable {
-        let type: String // "EXERCISE" or "SKIP"
-        let title: String
-        let content: String
-        let subject: String?
-        let inputType: String?
-        let yStart: Int
-        let yEnd: Int
-    }
-}
-
-// Explicitly implement Codable outside of MainActor context
-extension CloudAnalysisResult: Codable {
-    enum CodingKeys: String, CodingKey {
-        case summary, sections
-    }
-
-    nonisolated init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.summary = try container.decode(String.self, forKey: .summary)
-        self.sections = try container.decode([Section].self, forKey: .sections)
-    }
-}
-
-extension CloudAnalysisResult.Section: Codable {
-    enum CodingKeys: String, CodingKey {
-        case type, title, content, subject, inputType, yStart, yEnd
-    }
-
-    nonisolated init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.type = try container.decode(String.self, forKey: .type)
-        self.title = try container.decode(String.self, forKey: .title)
-        self.content = try container.decode(String.self, forKey: .content)
-        self.subject = try container.decodeIfPresent(String.self, forKey: .subject)
-        self.inputType = try container.decodeIfPresent(String.self, forKey: .inputType)
-        self.yStart = try container.decode(Int.self, forKey: .yStart)
-        self.yEnd = try container.decode(Int.self, forKey: .yEnd)
-    }
-}
-
-/// Request structure for cloud analysis (single image - legacy)
-struct AnalysisRequest: Sendable {
-    let imageBase64: String
-    let imageMimeType: String
-    let ocrJsonText: String
-}
-
-// Explicitly implement Encodable outside of MainActor context
-extension AnalysisRequest: Encodable {
-    enum CodingKeys: String, CodingKey {
-        case imageBase64, imageMimeType, ocrJsonText
-    }
-
-    nonisolated func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(imageBase64, forKey: .imageBase64)
-        try container.encode(imageMimeType, forKey: .imageMimeType)
-        try container.encode(ocrJsonText, forKey: .ocrJsonText)
-    }
-}
-
-/// Request structure for multi-image analysis
-struct MultiImageAnalysisRequest: Sendable {
-    let images: [ImageData]
-    let ocrJsonText: String
-
-    struct ImageData: Sendable {
-        let imageBase64: String
-        let imageMimeType: String
-        let pageNumber: Int
-    }
-}
-
-// Explicitly implement Encodable outside of MainActor context
-extension MultiImageAnalysisRequest: Encodable {
-    enum CodingKeys: String, CodingKey {
-        case images, ocrJsonText
-    }
-
-    nonisolated func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(images, forKey: .images)
-        try container.encode(ocrJsonText, forKey: .ocrJsonText)
-    }
-}
-
-extension MultiImageAnalysisRequest.ImageData: Encodable {
-    enum CodingKeys: String, CodingKey {
-        case imageBase64, imageMimeType, pageNumber
-    }
-
-    nonisolated func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(imageBase64, forKey: .imageBase64)
-        try container.encode(imageMimeType, forKey: .imageMimeType)
-        try container.encode(pageNumber, forKey: .pageNumber)
-    }
-}
-
 /// Service for analyzing homework using cloud-based LLMs via Firebase Functions
 class CloudAnalysisService {
     static let shared = CloudAnalysisService()
@@ -156,8 +51,8 @@ class CloudAnalysisService {
     ///   - completion: Callback with the analysis result or error
     func analyzeHomework(
         image: UIImage,
-        ocrBlocks: [AIAnalysisService.OCRBlock]
-    ) async -> Result<AIAnalysisService.AnalysisResult, Error> {
+        ocrBlocks: [OCRBlock]
+    ) async -> Result<AnalysisResult, Error> {
         return await withCheckedContinuation { continuation in
             analyzeHomework(image: image, ocrBlocks: ocrBlocks) { result in
                 continuation.resume(returning: result)
@@ -173,8 +68,8 @@ class CloudAnalysisService {
     ///   - completion: Callback with the analysis result or error
     func analyzeHomework(
         images: [UIImage],
-        ocrBlocks: [AIAnalysisService.OCRBlock],
-        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
+        ocrBlocks: [OCRBlock],
+        completion: @escaping (Result<AnalysisResult, Error>) -> Void
     ) {
         AppLogger.cloud.info("Multi-image analysis: combining \(images.count) images into single image for cloud analysis")
 
@@ -191,8 +86,8 @@ class CloudAnalysisService {
 
     func analyzeHomework(
         image: UIImage,
-        ocrBlocks: [AIAnalysisService.OCRBlock],
-        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
+        ocrBlocks: [OCRBlock],
+        completion: @escaping (Result<AnalysisResult, Error>) -> Void
     ) {
         #if DEBUG
         // In DEBUG mode, skip App Check for local emulator testing
@@ -245,7 +140,7 @@ class CloudAnalysisService {
     ///   - completion: Callback with the analysis result or error
     func analyzeTextOnly(
         text: String,
-        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void
+        completion: @escaping (Result<AnalysisResult, Error>) -> Void
     ) {
         #if DEBUG
         let appCheckToken = "emulator-bypass-token"
@@ -277,9 +172,9 @@ class CloudAnalysisService {
     /// Performs the actual analysis request with the given App Check token
     private func performAnalysisRequest(
         image: UIImage,
-        ocrBlocks: [AIAnalysisService.OCRBlock],
+        ocrBlocks: [OCRBlock],
         appCheckToken: String,
-        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void,
+        completion: @escaping (Result<AnalysisResult, Error>) -> Void,
         retryCount: Int = 0
     ) {
         // Step 1: Convert image to base64
@@ -444,7 +339,7 @@ class CloudAnalysisService {
     private func performTextOnlyAnalysisRequest(
         text: String,
         appCheckToken: String,
-        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void,
+        completion: @escaping (Result<AnalysisResult, Error>) -> Void,
         retryCount: Int = 0
     ) {
         AppLogger.cloud.info("📤 SENDING TEXT-ONLY ANALYSIS REQUEST TO CLOUD AI:")
@@ -593,9 +488,9 @@ class CloudAnalysisService {
     /// Performs the actual multi-image analysis request with the given App Check token
     private func performMultiImageAnalysisRequest(
         images: [UIImage],
-        ocrBlocks: [AIAnalysisService.OCRBlock],
+        ocrBlocks: [OCRBlock],
         appCheckToken: String,
-        completion: @escaping (Result<AIAnalysisService.AnalysisResult, Error>) -> Void,
+        completion: @escaping (Result<AnalysisResult, Error>) -> Void,
         retryCount: Int = 0
     ) {
         // Step 1: Convert all images to base64
@@ -736,7 +631,7 @@ class CloudAnalysisService {
     */
 
     /// Formats OCR blocks into text format for the cloud API
-    private func formatOCRBlocks(_ blocks: [AIAnalysisService.OCRBlock]) -> String {
+    private func formatOCRBlocks(_ blocks: [OCRBlock]) -> String {
         var result = "OCR Text Analysis with Y-coordinates:\n\n"
 
         for (index, block) in blocks.enumerated() {
@@ -748,8 +643,8 @@ class CloudAnalysisService {
     }
 
     /// Converts cloud response to our internal format
-    private static func convertToAnalysisResult(_ cloudResult: CloudAnalysisResult) -> AIAnalysisService.AnalysisResult {
-        var exercises: [AIAnalysisService.Exercise] = []
+    private static func convertToAnalysisResult(_ cloudResult: CloudAnalysisResult) -> AnalysisResult {
+        var exercises: [Exercise] = []
 
         AppLogger.cloud.debug("Converting cloud result to exercises...")
         AppLogger.cloud.debug("Total sections: \(cloudResult.sections.count)")
@@ -762,7 +657,7 @@ class CloudAnalysisService {
             if section.type == "EXERCISE" {
                 // Extract exercise number from title (e.g., "Exercise 8" -> "8")
                 let exerciseNumber = extractExerciseNumber(from: section.title)
-                let exercise = AIAnalysisService.Exercise(
+                let exercise = Exercise(
                     exerciseNumber: exerciseNumber,
                     type: inferExerciseType(from: section.content),
                     fullContent: addBackslashesToLaTeX(section.content),
@@ -788,7 +683,7 @@ class CloudAnalysisService {
         let sortedExercises = exercises.sorted { $0.startY < $1.startY }
         AppLogger.cloud.info("Successfully converted to \(sortedExercises.count) exercises")
 
-        return AIAnalysisService.AnalysisResult(exercises: sortedExercises)
+        return AnalysisResult(exercises: sortedExercises)
     }
 
     private static func addBackslashesToLaTeX(_ text: String) -> String {
@@ -832,8 +727,8 @@ class CloudAnalysisService {
     ///   - exercise: The exercise to generate hints for
     ///   - completion: Callback with array of 4 progressive hints
     func generateHints(
-        for exercise: AIAnalysisService.Exercise,
-        completion: @escaping (Result<[AIAnalysisService.Hint], Error>) -> Void
+        for exercise: Exercise,
+        completion: @escaping (Result<[Hint], Error>) -> Void
     ) {
         #if DEBUG
         let appCheckToken = "emulator-bypass-token"
@@ -869,9 +764,9 @@ class CloudAnalysisService {
     ///   - count: Number of similar exercises to generate (default: 3)
     ///   - completion: Callback with array of generated exercises
     func generateSimilarExercises(
-        basedOn exercise: AIAnalysisService.Exercise,
+        basedOn exercise: Exercise,
         count: Int = 3,
-        completion: @escaping (Result<[AIAnalysisService.SimilarExercise], Error>) -> Void
+        completion: @escaping (Result<[SimilarExercise], Error>) -> Void
     ) {
         #if DEBUG
         let appCheckToken = "emulator-bypass-token"
@@ -902,10 +797,10 @@ class CloudAnalysisService {
 
     /// Performs the actual similar exercises generation request
     private func performSimilarExercisesRequest(
-        exercise: AIAnalysisService.Exercise,
+        exercise: Exercise,
         count: Int,
         appCheckToken: String,
-        completion: @escaping (Result<[AIAnalysisService.SimilarExercise], Error>) -> Void,
+        completion: @escaping (Result<[SimilarExercise], Error>) -> Void,
         retryCount: Int = 0
     ) {
         let url = URL(string: "\(Config.baseURL)/generateSimilarExercises")!
@@ -1000,7 +895,7 @@ class CloudAnalysisService {
             }
 
             do {
-                let exercises = try JSONDecoder().decode([AIAnalysisService.SimilarExercise].self, from: data)
+                let exercises = try JSONDecoder().decode([SimilarExercise].self, from: data)
                 AppLogger.cloud.info("Successfully decoded \(exercises.count) similar exercises")
                 completion(.success(exercises))
             } catch {
@@ -1017,9 +912,9 @@ class CloudAnalysisService {
 
     /// Performs the actual hints generation request
     private func performHintsRequest(
-        exercise: AIAnalysisService.Exercise,
+        exercise: Exercise,
         appCheckToken: String,
-        completion: @escaping (Result<[AIAnalysisService.Hint], Error>) -> Void,
+        completion: @escaping (Result<[Hint], Error>) -> Void,
         retryCount: Int = 0
     ) {
         let url = URL(string: "\(Config.baseURL)/generateHints")!
@@ -1111,7 +1006,7 @@ class CloudAnalysisService {
             }
 
             do {
-                let hints = try JSONDecoder().decode([AIAnalysisService.Hint].self, from: data)
+                let hints = try JSONDecoder().decode([Hint].self, from: data)
                 AppLogger.cloud.info("Successfully decoded \(hints.count) hints")
                 completion(.success(hints))
             } catch {
@@ -1124,48 +1019,5 @@ class CloudAnalysisService {
         }
 
         task.resume()
-    }
-
-    /// Errors that can occur during cloud analysis
-    enum CloudAnalysisError: LocalizedError {
-        case imageConversionFailed
-        case encodingFailed(Error)
-        case networkError(Error)
-        case invalidResponse
-        case serverError(Int, String)
-        case noData
-        case decodingFailed(Error)
-        case appCheckFailed(Error)
-        case noAppCheckToken
-
-        var errorDescription: String? {
-            switch self {
-            case .imageConversionFailed:
-                return "Failed to convert image to JPEG format"
-            case .encodingFailed(let error):
-                return "Failed to encode request: \(error.localizedDescription)"
-            case .networkError(let error):
-                let nsError = error as NSError
-                if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut {
-                    return "Request timed out. The server took too long to respond. Please try again."
-                }
-                return "Network error: \(error.localizedDescription)"
-            case .invalidResponse:
-                return "Invalid response from server"
-            case .serverError(let code, let message):
-                if code >= 500 {
-                    return "Server is temporarily unavailable (\(code)). Please try again in a moment."
-                }
-                return "Server error (\(code)): \(message)"
-            case .noData:
-                return "No data received from server"
-            case .decodingFailed(let error):
-                return "Failed to decode response: \(error.localizedDescription)"
-            case .appCheckFailed(let error):
-                return "App Check verification failed: \(error.localizedDescription)"
-            case .noAppCheckToken:
-                return "Failed to obtain App Check token"
-            }
-        }
     }
 }

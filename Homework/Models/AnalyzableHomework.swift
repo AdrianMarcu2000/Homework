@@ -35,12 +35,12 @@ protocol AnalyzableHomework: AnyObject {
 
 /// Extension to provide default implementation for analysis result parsing
 extension AnalyzableHomework {
-    var analysisResult: AIAnalysisService.AnalysisResult? {
+    var analysisResult: AnalysisResult? {
         guard let json = analysisJSON,
               let data = json.data(using: .utf8) else {
             return nil
         }
 
-        return try? JSONDecoder().decode(AIAnalysisService.AnalysisResult.self, from: data)
+        return try? JSONDecoder().decode(AnalysisResult.self, from: data)
     }
 }

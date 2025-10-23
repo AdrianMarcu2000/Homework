@@ -1,312 +1,14 @@
+
 //
-//  HomeworkListView.swift
+//  HomeworkDetailView.swift
 //  Homework
 //
-//  Created by Adrian Marcu on 08.10.2025.
+//  Created by Claude on 11.10.2025.
 //
 
 import SwiftUI
 import CoreData
 import OSLog
-
-/// A view that displays a list of homework items with editing capabilities.
-///
-/// This view handles the presentation of homework items in a list format,
-/// allowing users to select, view, and delete items.
-struct HomeworkListView: View {
-    // MARK: - Properties
-
-    /// Fetched results containing all homework items sorted by timestamp (newest first)
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: false)],
-        animation: .default)
-    private var items: FetchedResults<Item>
-
-    /// Core Data managed object context
-    @Environment(\.managedObjectContext) private var viewContext
-
-    /// Callback triggered when the camera button is tapped
-    var onTakePhoto: () -> Void
-
-    /// Callback triggered when the photo library button is tapped
-    var onChooseFromLibrary: () -> Void
-
-    /// Callback triggered when the load file button is tapped
-    var onLoadFile: () -> Void
-
-    /// Callback triggered when the load PDF button is tapped
-    var onLoadPDF: () -> Void
-
-    /// Binding to the currently selected item
-    @Binding var selectedItem: Item?
-
-    /// View model for homework capture operations
-    var viewModel: HomeworkCaptureViewModel
-
-    /// Show settings sheet
-    @State private var showSettings = false
-
-    /// Track which sections are expanded
-    @State private var expandedSections: Set<String> = []
-
-    /// Track edit mode
-    @Environment(\.editMode) private var editMode
-
-    // MARK: - Body
-
-    /// Grouped items by subject
-    private var groupedItems: [String: [Item]] {
-        Dictionary(grouping: Array(items), by: { $0.subject })
-    }
-
-    /// Sorted subject names by newest homework in each group
-    private var sortedSubjects: [String] {
-        groupedItems.keys.sorted { subject1, subject2 in
-            // "Other" always goes last
-            if subject1 == "Other" { return false }
-            if subject2 == "Other" { return true }
-
-            // Get newest homework in each subject
-            let newest1 = groupedItems[subject1]?.first?.timestamp ?? Date.distantPast
-            let newest2 = groupedItems[subject2]?.first?.timestamp ?? Date.distantPast
-
-            // Sort by newest first
-            return newest1 > newest2
-        }
-    }
-
-    var body: some View {
-        List(selection: $selectedItem) {
-            ForEach(sortedSubjects, id: \.self) { subject in
-                DisclosureGroup(
-                    isExpanded: Binding(
-                        get: { expandedSections.contains(subject) },
-                        set: { isExpanded in
-                            if isExpanded {
-                                expandedSections.insert(subject)
-                            } else {
-                                expandedSections.remove(subject)
-                            }
-                        }
-                    )
-                ) {
-                    ForEach(groupedItems[subject] ?? []) { item in
-                        HomeworkRowView(item: item)
-                            .tag(item)
-                    }
-                    .onDelete { offsets in
-                        deleteItemsInSection(subject: subject, offsets: offsets)
-                    }
-                } label: {
-                    SubjectHeader(subject: subject, count: groupedItems[subject]?.count ?? 0)
-                }
-            }
-        }
-        .onAppear {
-            // Expand the first section (newest) by default
-            if let firstSubject = sortedSubjects.first {
-                expandedSections.insert(firstSubject)
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: {
-                    withAnimation {
-                        if editMode?.wrappedValue == .active {
-                            editMode?.wrappedValue = .inactive
-                            AppLogger.ui.info("User exited edit mode")
-                        } else {
-                            editMode?.wrappedValue = .active
-                            AppLogger.ui.info("User entered edit mode")
-                        }
-                    }
-                }) {
-                    Text(editMode?.wrappedValue == .active ? "Done" : "Edit")
-                        .fontWeight(.medium)
-                }
-            }
-
-            if editMode?.wrappedValue != .active {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: onTakePhoto) {
-                        Label("Camera", systemImage: "camera")
-                    }
-                    .labelStyle(.iconOnly)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: onChooseFromLibrary) {
-                        Label("Library", systemImage: "photo")
-                    }
-                    .labelStyle(.iconOnly)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: onLoadFile) {
-                        Label("Load File", systemImage: "folder")
-                    }
-                    .labelStyle(.iconOnly)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: onLoadPDF) {
-                        Label("Load PDF", systemImage: "doc.fill")
-                    }
-                    .labelStyle(.iconOnly)
-                }
-            }
-
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: { showSettings = true }) {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .labelStyle(.iconOnly)
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-        }
-    }
-
-    // MARK: - Private Methods
-
-    /// Deletes homework items from a specific subject section
-    ///
-    /// - Parameters:
-    ///   - subject: The subject section
-    ///   - offsets: The index set of items to delete within that section
-    private func deleteItemsInSection(subject: String, offsets: IndexSet) {
-        withAnimation {
-            guard let sectionItems = groupedItems[subject] else { return }
-            let itemsToDelete = offsets.map { sectionItems[$0] }
-
-            AppLogger.ui.info("User deleted \(itemsToDelete.count) homework item(s) from \(subject)")
-
-            // Check if currently selected item is being deleted
-            if let selected = selectedItem, itemsToDelete.contains(selected) {
-                selectedItem = nil
-            }
-
-            itemsToDelete.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-                AppLogger.persistence.info("Deleted items saved to Core Data")
-            } catch {
-                AppLogger.persistence.error("Failed to delete homework items", error: error)
-                // In production, you might want to show an alert to the user instead of crashing
-                // For now, roll back the delete operation
-                viewContext.rollback()
-            }
-        }
-    }
-}
-
-/// Custom section header for subject groups
-private struct SubjectHeader: View {
-    let subject: String
-    let count: Int
-
-    /// Icon for each subject
-    private var subjectIcon: String {
-        switch subject.lowercased() {
-        case "mathematics", "math":
-            return "function"
-        case "science":
-            return "atom"
-        case "history":
-            return "clock"
-        case "english", "language":
-            return "book"
-        case "geography":
-            return "globe"
-        case "physics":
-            return "waveform.path"
-        case "chemistry":
-            return "flask"
-        case "biology":
-            return "leaf"
-        default:
-            return "folder"
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: subjectIcon)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
-            Text(subject)
-                .font(.headline)
-                .fontWeight(.semibold)
-
-            Text("(\(count))")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Spacer()
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-/// A row view displaying a single homework item in the list.
-struct HomeworkRowView: View {
-    @ObservedObject var item: Item
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Thumbnail image
-            if let imageData = item.imageData,
-               let uiImage = UIImage(data: imageData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 60, height: 60)
-                    .cornerRadius(8)
-                    .clipped()
-            } else {
-                // Placeholder if no image
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 60, height: 60)
-                    .overlay(
-                        Image(systemName: "doc.text.image")
-                            .foregroundColor(.secondary)
-                    )
-            }
-
-            // Text preview and timestamp
-            VStack(alignment: .leading, spacing: 4) {
-                if let text = item.extractedText, !text.isEmpty {
-                    Text(text)
-                        .font(.body)
-                        .lineLimit(2)
-                        .foregroundColor(.primary)
-                } else {
-                    Text("No text extracted")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .italic()
-                }
-
-                if let timestamp = item.timestamp {
-                    Text(timestamp, formatter: itemFormatter)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("No date")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-        }
-        .padding(.vertical, 4)
-    }
-}
 
 /// A detail view for displaying a single homework item's information.
 struct HomeworkDetailView: View {
@@ -374,7 +76,7 @@ struct HomeworkDetailView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
                             ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
-                                ExerciseCard(exercise: exercise, homeworkItem: item)
+                                HomeworkDetailExerciseCard(exercise: exercise, homeworkItem: item)
                                     .padding(.horizontal)
                             }
                         }
@@ -597,31 +299,18 @@ struct HomeworkDetailView: View {
         }
     }
 }
+private struct HomeworkDetailExerciseCard: View {
+    let exercise: Exercise
+    let homeworkItem: Item
 
-// MARK: - Helper Formatters
-
-/// Date formatter used to display homework item timestamps
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
-
-// MARK: - Previews
-
-#Preview {
-    let mockViewModel = HomeworkCaptureViewModel(context: PersistenceController.preview.container.viewContext)
-
-    NavigationView {
-        HomeworkListView(
-            onTakePhoto: {},
-            onChooseFromLibrary: {},
-            onLoadFile: {},
-            onLoadPDF: {},
-            selectedItem: .constant(nil),
-            viewModel: mockViewModel
+    var body: some View {
+        ExerciseCardContent(
+            exercise: exercise,
+            imageData: homeworkItem.imageData,
+            exerciseAnswers: Binding(
+                get: { homeworkItem.exerciseAnswers },
+                set: { homeworkItem.exerciseAnswers = $0 }
+            )
         )
-        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
     }
 }

@@ -4,7 +4,8 @@
       "Bash(defaults write:*)",
       "WebSearch",
       "WebFetch(domain:developers.google.com)",
-      "Bash(xcodebuild:*)"
+      "Bash(xcodebuild:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

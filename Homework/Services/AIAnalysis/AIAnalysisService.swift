@@ -27,93 +27,6 @@ class AIAnalysisService {
         return SystemLanguageModel.default.isAvailable
     }
 
-    /// Represents an OCR text block with its position
-    struct OCRBlock: Codable {
-        let text: String
-        let y: Double
-    }
-
-    /// Represents an exercise segment
-    struct Exercise: Codable, Hashable {
-        let exerciseNumber: String
-        let type: String
-        let fullContent: String
-        let startY: Double
-        let endY: Double
-        let subject: String? // mathematics, language, science, history, etc.
-        let inputType: String? // text, canvas, both
-
-        // Custom decoding to handle null exerciseNumber and optional fields
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-
-            // If exerciseNumber is null, use "Unknown"
-            if let number = try container.decodeIfPresent(String.self, forKey: .exerciseNumber) {
-                self.exerciseNumber = number
-            } else {
-                self.exerciseNumber = "Unknown"
-            }
-
-            self.type = try container.decode(String.self, forKey: .type)
-            self.fullContent = try container.decode(String.self, forKey: .fullContent)
-            self.startY = try container.decode(Double.self, forKey: .startY)
-            self.endY = try container.decode(Double.self, forKey: .endY)
-            self.subject = try container.decodeIfPresent(String.self, forKey: .subject)
-            self.inputType = try container.decodeIfPresent(String.self, forKey: .inputType) ?? "canvas" // default to canvas
-        }
-
-        // Regular init for non-decoded creation
-        init(exerciseNumber: String, type: String, fullContent: String, startY: Double, endY: Double, subject: String? = nil, inputType: String? = "canvas") {
-            self.exerciseNumber = exerciseNumber
-            self.type = type
-            self.fullContent = fullContent
-            self.startY = startY
-            self.endY = endY
-            self.subject = subject
-            self.inputType = inputType
-        }
-
-        enum CodingKeys: String, CodingKey {
-            case exerciseNumber, type, fullContent, startY, endY, subject, inputType
-        }
-    }
-
-    /// Analysis result containing exercises
-    struct AnalysisResult: Codable {
-        let exercises: [Exercise]
-    }
-
-    /// Result from analyzing a single segment
-    private struct SegmentAnalysisResult: Codable {
-        let type: String // "exercise" or "skip"
-        let exercise: Exercise?
-    }
-
-    /// Generated similar exercise
-    struct SimilarExercise: Codable, Identifiable {
-        var id: UUID { UUID() }
-        let exerciseNumber: String
-        let type: String
-        let content: String
-        let difficulty: String // same, easier, harder
-
-        enum CodingKeys: String, CodingKey {
-            case exerciseNumber, type, content, difficulty
-        }
-    }
-
-    /// Progressive hint for an exercise
-    struct Hint: Codable, Identifiable {
-        var id: UUID { UUID() }
-        let level: Int // 1, 2, 3 or 4
-        let title: String
-        let content: String
-
-        enum CodingKeys: String, CodingKey {
-            case level, title, content
-        }
-    }
-
     /// Analyzes a homework image using segment-based approach with text analysis
     ///
     /// - Parameters:
@@ -1071,24 +984,6 @@ Return ONLY the summary text, no JSON, no formatting. Be concise and helpful.
                 await MainActor.run {
                     completion(.failure(AIAnalysisError.parsingFailed(error)))
                 }
-            }
-        }
-    }
-
-    /// Errors that can occur during AI analysis
-    enum AIAnalysisError: LocalizedError {
-        case unsupportedVersion
-        case parsingFailed(Error)
-        case analysisUnavailable
-
-        var errorDescription: String? {
-            switch self {
-            case .unsupportedVersion:
-                return "Apple Intelligence requires iOS 18.1 or later"
-            case .parsingFailed(let error):
-                return "Failed to parse analysis result: \(error.localizedDescription)"
-            case .analysisUnavailable:
-                return "Apple Intelligence is not available on this device"
             }
         }
     }

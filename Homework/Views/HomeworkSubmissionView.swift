@@ -20,7 +20,7 @@ struct HomeworkSubmissionView: View {
     @State private var driveFileId: String?
     @State private var showClassroomInApp = false
 
-    private var exercisesWithAnswers: [(exercise: AIAnalysisService.Exercise, answer: Data?)] {
+    private var exercisesWithAnswers: [(exercise: Exercise, answer: Data?)] {
         guard let analysis = assignment.analysisResult else { return [] }
 
         return analysis.exercises.map { exercise in

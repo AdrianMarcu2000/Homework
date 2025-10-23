@@ -11,13 +11,13 @@ import CoreData
 
 /// A view that provides a drawing canvas for Apple Pencil input
 struct DrawingCanvasView: View {
-    let exercise: AIAnalysisService.Exercise
+    let exercise: Exercise
     let homeworkItem: (any AnalyzableHomework)?
     @Binding var exerciseAnswers: [String: Data]?
     @Binding var canvasData: Data?
 
     // Convenience init for Item (backward compatibility)
-    init(exercise: AIAnalysisService.Exercise, homeworkItem: Item, canvasData: Binding<Data?>) {
+    init(exercise: Exercise, homeworkItem: Item, canvasData: Binding<Data?>) {
         self.exercise = exercise
         self.homeworkItem = homeworkItem
         self._canvasData = canvasData
@@ -35,7 +35,7 @@ struct DrawingCanvasView: View {
     }
 
     // Generic init for any AnalyzableHomework (including ClassroomAssignment)
-    init(exercise: AIAnalysisService.Exercise, imageData: Data?, exerciseAnswers: Binding<[String: Data]?>, canvasData: Binding<Data?>) {
+    init(exercise: Exercise, imageData: Data?, exerciseAnswers: Binding<[String: Data]?>, canvasData: Binding<Data?>) {
         self.exercise = exercise
         self.homeworkItem = nil
         self._exerciseAnswers = exerciseAnswers
@@ -114,7 +114,7 @@ struct DrawingCanvasView: View {
 struct CanvasRepresentable: UIViewRepresentable {
     @Binding var canvas: PKCanvasView
     @Binding var canvasData: Data?
-    let exercise: AIAnalysisService.Exercise
+    let exercise: Exercise
     @Binding var exerciseAnswers: [String: Data]?
 
     func makeUIView(context: Context) -> PKCanvasView {

@@ -10,7 +10,7 @@ import CoreData
 
 /// A text input view for answering exercises with typed responses
 struct TextAnswerView: View {
-    let exercise: AIAnalysisService.Exercise
+    let exercise: Exercise
     let homeworkItem: (any AnalyzableHomework)?
     @Binding var exerciseAnswers: [String: Data]?
 
@@ -18,7 +18,7 @@ struct TextAnswerView: View {
     @FocusState private var isFocused: Bool
 
     // Convenience init for Item (backward compatibility)
-    init(exercise: AIAnalysisService.Exercise, homeworkItem: Item) {
+    init(exercise: Exercise, homeworkItem: Item) {
         self.exercise = exercise
         self.homeworkItem = homeworkItem
 
@@ -43,7 +43,7 @@ struct TextAnswerView: View {
     }
 
     // Generic init for any AnalyzableHomework (including ClassroomAssignment)
-    init(exercise: AIAnalysisService.Exercise, imageData: Data?, exerciseAnswers: Binding<[String: Data]?>) {
+    init(exercise: Exercise, imageData: Data?, exerciseAnswers: Binding<[String: Data]?>) {
         self.exercise = exercise
         self.homeworkItem = nil
         self._exerciseAnswers = exerciseAnswers
@@ -148,7 +148,7 @@ struct TextAnswerView: View {
 }
 
 #Preview {
-    let mockExercise = AIAnalysisService.Exercise(
+    let mockExercise = Exercise(
         exerciseNumber: "1",
         type: "short_answer",
         fullContent: "What is the capital of France?",

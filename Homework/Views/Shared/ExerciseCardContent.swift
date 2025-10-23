@@ -13,13 +13,13 @@ import CoreData
 
 /// Reusable exercise card content
 struct ExerciseCardContent: View {
-    let exercise: AIAnalysisService.Exercise
+    let exercise: Exercise
     let imageData: Data?
     @Binding var exerciseAnswers: [String: Data]?
-    @State private var similarExercises: [AIAnalysisService.SimilarExercise] = []
+    @State private var similarExercises: [SimilarExercise] = []
     @State private var isLoadingSimilarExercises = false
     @State private var similarExercisesErrorMessage: String?
-    @State private var hints: [AIAnalysisService.Hint] = []
+    @State private var hints: [Hint] = []
     @State private var revealedHintIndex: Int = -1
     @State private var isLoadingHints = false
     @State private var hintsErrorMessage: String?
@@ -37,7 +37,7 @@ struct ExerciseCardContent: View {
         return fullImage.crop(startY: exercise.startY, endY: exercise.endY, padding: 0.03)
     }
     
-    init(exercise: AIAnalysisService.Exercise, imageData: Data?, exerciseAnswers: Binding<[String: Data]?>) {
+    init(exercise: Exercise, imageData: Data?, exerciseAnswers: Binding<[String: Data]?>) {
         self.exercise = exercise
         self.imageData = imageData
         self._exerciseAnswers = exerciseAnswers
@@ -354,10 +354,10 @@ struct ExerciseCardContent: View {
 }
 
 private struct SimilarExercisesSectionView: View {
-    @Binding var similarExercises: [AIAnalysisService.SimilarExercise]
+    @Binding var similarExercises: [SimilarExercise]
     @Binding var isLoading: Bool
     @Binding var errorMessage: String?
-    let originalExercise: AIAnalysisService.Exercise
+    let originalExercise: Exercise
     let onGenerate: () -> Void
 
     var body: some View {
@@ -393,8 +393,8 @@ private struct SimilarExercisesSectionView: View {
 }
 
 private struct CombinedSimilarExercisesCard: View {
-    let exercises: [AIAnalysisService.SimilarExercise]
-    let originalExercise: AIAnalysisService.Exercise
+    let exercises: [SimilarExercise]
+    let originalExercise: Exercise
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
 
     var body: some View {
@@ -445,7 +445,7 @@ private struct CombinedSimilarExercisesCard: View {
 }
 
 private struct HintsSectionView: View {
-    @Binding var hints: [AIAnalysisService.Hint]
+    @Binding var hints: [Hint]
     @Binding var revealedHintIndex: Int
     @Binding var isLoading: Bool
     @Binding var errorMessage: String?
@@ -490,7 +490,7 @@ private struct HintsSectionView: View {
 }
 
 private struct HintCard: View {
-    let hint: AIAnalysisService.Hint
+    let hint: Hint
     
     private var levelColor: Color {
         switch hint.level {
@@ -557,8 +557,8 @@ private struct HintCard: View {
 }
 
 private struct PracticeExerciseCard: View {
-    let practiceExercise: AIAnalysisService.SimilarExercise
-    let originalExercise: AIAnalysisService.Exercise
+    let practiceExercise: SimilarExercise
+    let originalExercise: Exercise
     let useCloudAnalysis: Bool
 
     @State private var canvasData: Data?
@@ -677,7 +677,7 @@ private struct PracticeExerciseCard: View {
         }
 
         // Create a temporary exercise from the practice exercise for verification
-        let tempExercise = AIAnalysisService.Exercise(
+        let tempExercise = Exercise(
             exerciseNumber: practiceExercise.exerciseNumber,
             type: practiceExercise.type,
             fullContent: practiceExercise.content,

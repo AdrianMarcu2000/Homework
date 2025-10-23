@@ -378,9 +378,9 @@ struct PDFHomeworkView: View {
             }
 
             // Perform AI analysis
-            let aiBlocks = ocrBlocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
+            let aiBlocks = ocrBlocks.map { OCRBlock(text: $0.text, y: $0.y) }
 
-            let analysisResult: Result<AIAnalysisService.AnalysisResult, Error>
+            let analysisResult: Result<AnalysisResult, Error>
             if shouldUseCloud {
                 analysisResult = await CloudAnalysisService.shared.analyzeHomework(image: pageImage, ocrBlocks: aiBlocks)
             } else {

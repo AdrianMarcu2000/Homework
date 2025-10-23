@@ -23,7 +23,7 @@ class PDFGenerationService {
     /// - Returns: PDF data
     func generateHomeworkPDF(
         assignment: ClassroomAssignment,
-        exercisesWithAnswers: [(exercise: AIAnalysisService.Exercise, answer: Data?)]
+        exercisesWithAnswers: [(exercise: Exercise, answer: Data?)]
     ) async throws -> Data {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -44,7 +44,7 @@ class PDFGenerationService {
 
     private func createPDF(
         assignment: ClassroomAssignment,
-        exercisesWithAnswers: [(exercise: AIAnalysisService.Exercise, answer: Data?)]
+        exercisesWithAnswers: [(exercise: Exercise, answer: Data?)]
     ) throws -> Data {
         // Page setup
         let pageWidth: CGFloat = 612.0  // 8.5 inches at 72 DPI

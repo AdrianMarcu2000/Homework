@@ -404,11 +404,11 @@ struct AssignmentDetailView: View {
                 }
 
                 // Analyze with AI - prepend assignment description to OCR blocks
-                var aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
+                var aiBlocks = ocrResult.blocks.map { OCRBlock(text: $0.text, y: $0.y) }
 
                 // If we have assignment description, add it as a block at the top
                 if !assignmentDescription.isEmpty {
-                    let descriptionBlock = AIAnalysisService.OCRBlock(text: "Assignment Description:\n\(assignmentDescription)\n\nAttachment Content:", y: 1.0)
+                    let descriptionBlock = OCRBlock(text: "Assignment Description:\n\(assignmentDescription)\n\nAttachment Content:", y: 1.0)
                     aiBlocks.insert(descriptionBlock, at: 0)
                 }
 
@@ -461,11 +461,11 @@ struct AssignmentDetailView: View {
                 }
 
                 // Prepare OCR blocks with assignment description
-                var aiBlocks = ocrResult.blocks.map { AIAnalysisService.OCRBlock(text: $0.text, y: $0.y) }
+                var aiBlocks = ocrResult.blocks.map { OCRBlock(text: $0.text, y: $0.y) }
 
                 // If we have assignment description, add it as a block at the top
                 if !assignmentDescription.isEmpty {
-                    let descriptionBlock = AIAnalysisService.OCRBlock(text: "Assignment Description:\n\(assignmentDescription)\n\nAttachment Content:", y: 1.0)
+                    let descriptionBlock = OCRBlock(text: "Assignment Description:\n\(assignmentDescription)\n\nAttachment Content:", y: 1.0)
                     aiBlocks.insert(descriptionBlock, at: 0)
                 }
 
@@ -500,7 +500,7 @@ struct AssignmentDetailView: View {
         }
     }
 
-    private func analyzeWithLocal(image: UIImage, ocrBlocks: [AIAnalysisService.OCRBlock]) {
+    private func analyzeWithLocal(image: UIImage, ocrBlocks: [OCRBlock]) {
         AIAnalysisService.shared.analyzeHomeworkWithSegments(
             image: image,
             ocrBlocks: ocrBlocks,
@@ -514,13 +514,13 @@ struct AssignmentDetailView: View {
         }
     }
 
-    private func analyzeWithCloud(image: UIImage, ocrBlocks: [AIAnalysisService.OCRBlock]) {
+    private func analyzeWithCloud(image: UIImage, ocrBlocks: [OCRBlock]) {
         CloudAnalysisService.shared.analyzeHomework(image: image, ocrBlocks: ocrBlocks) { result in
             handleAnalysisResult(result)
         }
     }
 
-    private func handleAnalysisResult(_ result: Result<AIAnalysisService.AnalysisResult, Error>) {
+    private func handleAnalysisResult(_ result: Result<AnalysisResult, Error>) {
         DispatchQueue.main.async {
             isAnalyzing = false
             analysisProgress = nil
@@ -540,7 +540,7 @@ struct AssignmentDetailView: View {
         }
     }
 
-    private func saveAnalysisResult(_ analysis: AIAnalysisService.AnalysisResult) {
+    private func saveAnalysisResult(_ analysis: AnalysisResult) {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
@@ -582,322 +582,5 @@ struct AssignmentDetailView: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Attachment Row Button
-
-private struct AttachmentRowButton: View {
-    let material: Material
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Icon
-                if let driveFile = material.driveFile?.driveFile {
-                    let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()
-
-                    if fileExtension == "pdf" {
-                        Image(systemName: "doc.fill")
-                            .font(.title2)
-                            .foregroundColor(.red)
-                    } else if fileExtension == "odt" {
-                        Image(systemName: "doc.text.fill")
-                            .font(.title2)
-                            .foregroundColor(.purple)
-                    } else if ["jpg", "jpeg", "png", "gif", "heic", "heif", "bmp"].contains(fileExtension) {
-                        Image(systemName: "photo.fill")
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                    } else {
-                        Image(systemName: "doc.fill")
-                            .font(.title2)
-                            .foregroundColor(.gray)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(driveFile.title)
-                            .font(.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-
-                        Text(fileExtension.uppercased())
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                } else if let link = material.link {
-                    Image(systemName: "link")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(link.title ?? "Link")
-                            .font(.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-
-                        Text(link.url)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color(UIColor.secondarySystemBackground))
-            .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Attachment Content View
-
-private struct AttachmentContentView: View {
-    let material: Material
-    let onBack: () -> Void
-    @State private var isLoading = false
-    @State private var fileData: Data?
-    @State private var errorMessage: String?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Navigation bar
-            HStack {
-                Button(action: onBack) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
-                    }
-                }
-                .padding()
-
-                Spacer()
-            }
-            .background(Color(UIColor.systemBackground))
-
-            Divider()
-
-            // Content
-            if isLoading {
-                VStack(spacing: 16) {
-                    Spacer()
-                    ProgressView()
-                        .scaleEffect(1.5)
-                    Text("Loading attachment...")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            } else if let error = errorMessage {
-                VStack(spacing: 16) {
-                    Spacer()
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 60))
-                        .foregroundColor(.red)
-                    Text("Failed to load attachment")
-                        .font(.headline)
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            } else {
-                attachmentContent
-            }
-        }
-        .navigationBarHidden(true)
-        .onAppear {
-            loadAttachment()
-        }
-    }
-
-    @ViewBuilder
-    private var attachmentContent: some View {
-        if let driveFile = material.driveFile?.driveFile {
-            driveFileViewer(driveFile)
-        } else if let link = material.link {
-            linkViewer(link)
-        } else {
-            Text("Unsupported attachment type")
-                .foregroundColor(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private func driveFileViewer(_ driveFile: DriveFile) -> some View {
-        let fileExtension = (driveFile.title as NSString).pathExtension.lowercased()
-
-        if ["jpg", "jpeg", "png", "gif", "heic", "heif", "bmp"].contains(fileExtension) {
-            if let fileData = fileData, let image = UIImage(data: fileData) {
-                GeometryReader { geometry in
-                    ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
-                    }
-                }
-            }
-        } else if fileExtension == "pdf" {
-            if let fileData = fileData, let pdfDocument = PDFDocument(data: fileData) {
-                AssignmentPDFView(document: pdfDocument)
-            }
-        } else if fileExtension == "odt" {
-            if let fileData = fileData {
-                ODTViewerContent(odtData: fileData, fileName: driveFile.title)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func linkViewer(_ link: Link) -> some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "link.circle.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.orange)
-
-            if let title = link.title {
-                Text(title)
-                    .font(.headline)
-            }
-
-            Text(link.url)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .padding()
-
-            if let url = URL(string: link.url) {
-                SwiftUI.Link("Open Link", destination: url)
-                    .buttonStyle(.borderedProminent)
-            }
-            Spacer()
-        }
-    }
-
-    private func loadAttachment() {
-        guard let driveFile = material.driveFile?.driveFile else { return }
-
-        isLoading = true
-        errorMessage = nil
-
-        Task {
-            do {
-                let data = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
-                await MainActor.run {
-                    fileData = data
-                    isLoading = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isLoading = false
-                }
-            }
-        }
-    }
-}
-
-// MARK: - ODT Viewer Content
-
-private struct ODTViewerContent: View {
-    let odtData: Data
-    let fileName: String
-    @State private var content: ODTProcessingService.ODTContent?
-    @State private var isProcessing = true
-
-    var body: some View {
-        Group {
-            if isProcessing {
-                VStack(spacing: 16) {
-                    Spacer()
-                    ProgressView()
-                    Text("Processing ODT...")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            } else if let content = content {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        if !content.text.isEmpty {
-                            Text(content.text)
-                                .font(.body)
-                                .textSelection(.enabled)
-                                .padding()
-                        }
-
-                        ForEach(Array(content.images.enumerated()), id: \.offset) { index, image in
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .cornerRadius(8)
-                                .padding(.horizontal)
-                        }
-                    }
-                    .padding(.vertical)
-                }
-            }
-        }
-        .task {
-            // Process ODT in background
-            let extractedContent = await Task.detached {
-                await ODTProcessingService.shared.extractContent(from: odtData)
-            }.value
-
-            content = extractedContent
-            isProcessing = false
-        }
-    }
-
-    init(odtData: Data, fileName: String) {
-        self.odtData = odtData
-        self.fileName = fileName
-    }
-}
-
-// MARK: - PDF Viewer
-
-import PDFKit
-
-private struct AssignmentPDFView: UIViewRepresentable {
-    let document: PDFDocument
-
-    func makeUIView(context: Context) -> PDFView {
-        let pdfView = PDFView()
-        pdfView.document = document
-        pdfView.autoScales = true
-        pdfView.displayMode = .singlePageContinuous
-        pdfView.displayDirection = .vertical
-        return pdfView
-    }
-
-    func updateUIView(_ uiView: PDFView, context: Context) {
-        uiView.document = document
-    }
-}
-
-// MARK: - Exercise Card
-
-private struct ClassroomExerciseCard: View {
-    let exercise: AIAnalysisService.Exercise
-    @ObservedObject var assignment: ClassroomAssignment
-
-    var body: some View {
-        ExerciseCardContent(
-            exercise: exercise,
-            imageData: assignment.imageData,
-            exerciseAnswers: Binding(
-                get: { assignment.exerciseAnswers },
-                set: { assignment.exerciseAnswers = $0; assignment.saveToCache() }
-            )
-        )
     }
 }

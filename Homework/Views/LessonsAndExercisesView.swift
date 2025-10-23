@@ -12,7 +12,7 @@ import OSLog
 
 /// A view that displays analyzed exercises from homework
 struct LessonsAndExercisesView: View {
-    let analysis: AIAnalysisService.AnalysisResult
+    let analysis: AnalysisResult
     let homeworkItem: Item
 
     var body: some View {
@@ -98,7 +98,7 @@ private struct SummaryCard: View {
 }
 
 struct ExerciseCard: View {
-    let exercise: AIAnalysisService.Exercise
+    let exercise: Exercise
     @ObservedObject var homeworkItem: Item
 
     var body: some View {
@@ -121,16 +121,16 @@ struct ExerciseCard: View {
 // MARK: - Previews
 
 #Preview {
-    let mockAnalysis = AIAnalysisService.AnalysisResult(
+    let mockAnalysis = AnalysisResult(
         exercises: [
-            AIAnalysisService.Exercise(
+            Exercise(
                 exerciseNumber: "1",
                 type: "mathematical",
                 fullContent: "Solve for x: 2x + 5 = 15",
                 startY: 0.3,
                 endY: 0.35
             ),
-            AIAnalysisService.Exercise(
+            Exercise(
                 exerciseNumber: "2",
                 type: "calculation",
                 fullContent: "Calculate the area of a rectangle with length 8 cm and width 5 cm",

@@ -87,7 +87,7 @@ class AnswerVerificationService {
     ///   - canvasDrawing: PencilKit drawing (for canvas type)
     ///   - completion: Callback with verification result or error
     func verifyAnswer(
-        exercise: AIAnalysisService.Exercise,
+        exercise: Exercise,
         answerType: String,
         answerText: String? = nil,
         canvasDrawing: PKDrawing? = nil,
@@ -137,7 +137,7 @@ class AnswerVerificationService {
 
     /// Performs the actual verification request
     private func performVerificationRequest(
-        exercise: AIAnalysisService.Exercise,
+        exercise: Exercise,
         answerType: String,
         answerText: String?,
         canvasDrawing: PKDrawing?,

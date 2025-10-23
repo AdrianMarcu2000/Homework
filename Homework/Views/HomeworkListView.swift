@@ -314,159 +314,226 @@ struct HomeworkDetailView: View {
     var viewModel: HomeworkCaptureViewModel
     @Environment(\.managedObjectContext) private var viewContext
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
-    @State private var selectedTab = 0
+    @State private var showExercises = false
     @State private var isReanalyzing = false
 
+    // Check if already analyzed
+    private var hasAnalysis: Bool {
+        item.analysisResult != nil && !(item.analysisResult?.exercises.isEmpty ?? true)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Custom tab buttons
-            HStack(spacing: 0) {
-                TabButton(title: "Image", icon: "photo", isSelected: selectedTab == 0) {
-                    selectedTab = 0
-                }
-                TabButton(title: "Exercises", icon: "pencil.circle.fill", isSelected: selectedTab == 1) {
-                    selectedTab = 1
+        if showExercises && hasAnalysis {
+            // Show exercises view
+            exercisesView
+        } else {
+            // Show homework overview with image and analyze buttons
+            homeworkOverviewView
+        }
+    }
+
+    // MARK: - Exercises View
+
+    private var exercisesView: some View {
+        VStack(spacing: 0) {
+            if isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress {
+                analysisProgressView
+            } else if let analysis = item.analysisResult {
+                VStack(spacing: 0) {
+                    // Custom navigation bar
+                    HStack {
+                        Button(action: { showExercises = false }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("Back")
+                            }
+                        }
+                        .padding()
+
+                        Spacer()
+
+                        Text("Exercises")
+                            .font(.headline)
+
+                        Spacer()
+
+                        // Invisible button for symmetry
+                        Button(action: {}) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("Back")
+                            }
+                        }
+                        .padding()
+                        .opacity(0)
+                    }
+                    .background(Color(UIColor.systemBackground))
+
+                    Divider()
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
+                                ExerciseCard(exercise: exercise, homeworkItem: item)
+                                    .padding(.horizontal)
+                            }
+                        }
+                        .padding(.vertical)
+                    }
                 }
             }
-            .padding(.horizontal)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-            .background(Color(UIColor.systemBackground))
+        }
+        .navigationBarHidden(true)
+    }
 
-            // Tab content
-            TabView(selection: $selectedTab) {
-                // Image Tab
-                Group {
-                    if let imageData = item.imageData,
-                       let uiImage = UIImage(data: imageData) {
-                        ScrollView {
+    // MARK: - Analysis Progress
+
+    private var analysisProgressView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            if let progress = viewModel.analysisProgress {
+                ProgressView(value: Double(progress.current), total: Double(progress.total))
+                    .progressViewStyle(.linear)
+                    .frame(maxWidth: 300)
+                Text("Analyzing segment \(progress.current) of \(progress.total)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } else {
+                ProgressView()
+                    .scaleEffect(1.5)
+                Text(viewModel.isCloudAnalysisInProgress ? "Analyzing with cloud AI..." : "Analyzing homework...")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 8)
+            }
+
+            Spacer()
+        }
+    }
+
+    // MARK: - Homework Overview
+
+    private var homeworkOverviewView: some View {
+        VStack(spacing: 0) {
+            if isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress {
+                // Show progress
+                analysisProgressView
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Display scanned image in main body
+                        if let imageData = item.imageData,
+                           let uiImage = UIImage(data: imageData) {
                             Image(uiImage: uiImage)
                                 .resizable()
                                 .scaledToFit()
                                 .cornerRadius(12)
                                 .shadow(radius: 5)
                                 .padding()
-                        }
-                    } else {
-                        VStack(spacing: 16) {
-                            Image(systemName: "photo")
-                                .font(.system(size: 48))
-                                .foregroundColor(.secondary)
-                            Text("No Image")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .tag(0)
-
-                // Exercises Tab
-                Group {
-                    if isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress {
-                        // Show progress indicator during reanalysis
-                        VStack(spacing: 16) {
-                            Spacer()
-
-                            if let progress = viewModel.analysisProgress {
-                                ProgressView(value: Double(progress.current), total: Double(progress.total))
-                                    .progressViewStyle(.linear)
-                                    .frame(maxWidth: 300)
-                                Text("Analyzing segment \(progress.current) of \(progress.total)")
-                                    .font(.subheadline)
+                        } else {
+                            VStack(spacing: 16) {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 48))
                                     .foregroundColor(.secondary)
-                            } else {
-                                ProgressView()
-                                    .scaleEffect(1.5)
-                                Text(viewModel.isCloudAnalysisInProgress ? "Analyzing with cloud AI..." : "Analyzing homework...")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .padding(.top, 8)
-                            }
-
-                            Spacer()
-                        }
-                    } else if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 20) {
-                                Text("✏️ Exercises")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .padding(.horizontal)
-
-                                ForEach(analysis.exercises, id: \.exerciseNumber) { exercise in
-                                    ExerciseCard(exercise: exercise, homeworkItem: item)
-                                        .padding(.horizontal)
-                                }
-                            }
-                            .padding(.vertical)
-                        }
-                        .id(item.analysisJSON ?? "")
-                    } else {
-                        // No analysis exists - show image and analyze options
-                        ScrollView {
-                            VStack(spacing: 20) {
-                                if let imageData = item.imageData,
-                                   let uiImage = UIImage(data: imageData) {
-                                    Image(uiImage: uiImage)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .cornerRadius(12)
-                                        .shadow(radius: 5)
-                                        .padding()
-                                } else {
-                                    Image(systemName: "doc.text.magnifyingglass")
-                                        .font(.system(size: 48))
-                                        .foregroundColor(.secondary)
-                                }
-
-                                Text("No Analysis Yet")
+                                Text("No Image")
                                     .font(.headline)
                                     .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                        }
 
-                                HStack(spacing: 16) {
+                        // AI Analysis / Re-analyze buttons
+                        VStack(spacing: 12) {
+                            Text(hasAnalysis ? "Actions" : "Analyze with AI")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            HStack(spacing: 12) {
+                                // Apple AI button
+                                if AIAnalysisService.shared.isModelAvailable {
                                     Button(action: {
-                                        AppLogger.ui.info("User triggered Apple AI analysis")
+                                        AppLogger.ui.info("User tapped \(hasAnalysis ? "re-analyze" : "analyze") with Apple AI")
+                                        isReanalyzing = true
                                         viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
                                     }) {
-                                        VStack(spacing: 8) {
-                                            Image(systemName: "brain.head.profile")
+                                        VStack(spacing: 6) {
+                                            Image(systemName: "apple.logo")
                                                 .font(.title2)
-                                            Text("Analyze with Apple")
-                                                .font(.headline)
+                                            Text(hasAnalysis ? "Re-analyze" : "Analyze with")
+                                                .font(.caption)
+                                            if !hasAnalysis {
+                                                Text("Apple AI")
+                                                    .font(.caption)
+                                                    .fontWeight(.semibold)
+                                            }
                                         }
-                                        .foregroundColor(.white)
-                                        .padding()
                                         .frame(maxWidth: .infinity)
-                                        .background(Color.blue)
+                                        .padding(.vertical, hasAnalysis ? 12 : 16)
+                                        .background(Color.purple.opacity(0.1))
+                                        .foregroundColor(.purple)
                                         .cornerRadius(10)
                                     }
+                                    .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+                                }
 
+                                // Google AI button
+                                if useCloudAnalysis {
                                     Button(action: {
-                                        AppLogger.ui.info("User triggered Cloud AI reanalysis")
+                                        AppLogger.ui.info("User tapped \(hasAnalysis ? "re-analyze" : "analyze") with Cloud AI")
+                                        isReanalyzing = true
                                         viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
                                     }) {
-                                        VStack(spacing: 8) {
-                                            Image(systemName: "sparkles")
+                                        VStack(spacing: 6) {
+                                            Image(systemName: "cloud.fill")
                                                 .font(.title2)
-                                            Text("Analyze with Cloud")
-                                                .font(.headline)
+                                            Text(hasAnalysis ? "Re-analyze" : "Analyze with")
+                                                .font(.caption)
+                                            if !hasAnalysis {
+                                                Text("Google AI")
+                                                    .font(.caption)
+                                                    .fontWeight(.semibold)
+                                            }
                                         }
-                                        .foregroundColor(.white)
-                                        .padding()
                                         .frame(maxWidth: .infinity)
-                                        .background(Color.purple)
+                                        .padding(.vertical, hasAnalysis ? 12 : 16)
+                                        .background(Color.green.opacity(0.1))
+                                        .foregroundColor(.green)
+                                        .cornerRadius(10)
+                                    }
+                                    .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
+                                }
+
+                                // View Exercises button (only when analyzed)
+                                if hasAnalysis {
+                                    Button(action: {
+                                        AppLogger.ui.info("User tapped view exercises")
+                                        showExercises = true
+                                    }) {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: "pencil.and.list.clipboard")
+                                                .font(.title2)
+                                            Text("View Exercises")
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .background(Color.blue.opacity(0.1))
+                                        .foregroundColor(.blue)
                                         .cornerRadius(10)
                                     }
                                 }
-                                .padding(.horizontal)
                             }
-                            .padding()
                         }
+                        .padding(.horizontal)
+                        .padding(.top, 12)
                     }
+                    .padding(.vertical)
                 }
-                .tag(1)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
         }
         .navigationTitle("Homework Details")
         .navigationBarTitleDisplayMode(.inline)
@@ -490,33 +557,6 @@ struct HomeworkDetailView: View {
                         Text(timestamp, formatter: itemFormatter)
                             .font(.caption)
                             .foregroundColor(.secondary)
-                    }
-                }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 12) {
-                    // Local reanalyze button
-                    Button(action: {
-                        AppLogger.ui.info("User triggered local AI reanalysis from toolbar")
-                        isReanalyzing = true
-                        viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: false)
-                    }) {
-                        Label("Local", systemImage: "brain.head.profile")
-                            .labelStyle(.iconOnly)
-                    }
-                    .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
-
-                    // Cloud reanalyze button (only show if enabled in settings)
-                    if useCloudAnalysis {
-                        Button(action: {
-                            AppLogger.ui.info("User triggered cloud AI reanalysis from toolbar")
-                            isReanalyzing = true
-                            viewModel.reanalyzeHomework(item: item, context: viewContext, useCloud: true)
-                        }) {
-                            Label("Cloud", systemImage: "sparkles")
-                                .labelStyle(.iconOnly)
-                        }
-                        .disabled(isReanalyzing || viewModel.isProcessingOCR || viewModel.isCloudAnalysisInProgress)
                     }
                 }
             }
@@ -555,69 +595,6 @@ struct HomeworkDetailView: View {
                 }
             }
         }
-    }
-}
-
-/// Custom tab button for inline tab bar with liquid glass style
-private struct TabButton: View {
-    let title: String
-    let icon: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-            }
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background {
-                if isSelected {
-                    ZStack {
-                        // Liquid glass background
-                        RoundedRectangle(cornerRadius: 30, style: .continuous)
-                            .fill(.ultraThinMaterial)
-
-                        // Subtle gradient overlay
-                        RoundedRectangle(cornerRadius: 30, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.2),
-                                        Color.white.opacity(0.05)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-
-                        // Border
-                        RoundedRectangle(cornerRadius: 30, style: .continuous)
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.3),
-                                        Color.white.opacity(0.1)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 0.5
-                            )
-                    }
-                    .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
     }
 }
 

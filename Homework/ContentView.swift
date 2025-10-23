@@ -210,6 +210,7 @@ private struct HomeworkExercisesDetailView: View {
     @AppStorage("hasCloudSubscription") private var hasCloudSubscription = false
     @State private var isReanalyzing = false
     @State private var showingSettings = false
+    @State private var showExercises = false
 
     /// Determines which AI upgrade button to show based on analysis history and AI availability
     private func getUpgradeOption() -> (show: Bool, method: AnalysisMethod, label: String, icon: String, color: Color, opensSettings: Bool)? {
@@ -273,45 +274,27 @@ private struct HomeworkExercisesDetailView: View {
 
                     Spacer()
                 }
-            } else if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
+            } else if showExercises, let analysis = item.analysisResult, !analysis.exercises.isEmpty {
                 VStack(spacing: 0) {
                     // Action buttons at the top
                     HStack(spacing: 12) {
-                        // View Original button - show image or text
-                        if item.imageData != nil {
-                            // Has image - show image viewer
-                            NavigationLink(destination: HomeworkImageView(item: item)) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "photo.fill")
-                                        .font(.title2)
-                                    Text("View Original")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundColor(.blue)
-                                .cornerRadius(10)
+                        // Back to Original button
+                        Button(action: {
+                            AppLogger.ui.info("User tapped back to original")
+                            showExercises = false
+                        }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: item.imageData != nil ? "photo.fill" : "doc.text.fill")
+                                    .font(.title2)
+                                Text("View Original")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
                             }
-                            .buttonStyle(.plain)
-                        } else if item.extractedText != nil && !(item.extractedText?.isEmpty ?? true) {
-                            // No image but has text - show text viewer
-                            NavigationLink(destination: HomeworkTextView(item: item)) {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "doc.text.fill")
-                                        .font(.title2)
-                                    Text("View Original")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundColor(.blue)
-                                .cornerRadius(10)
-                            }
-                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundColor(.blue)
+                            .cornerRadius(10)
                         }
 
                         // Analyze with Apple Intelligence button
@@ -323,7 +306,8 @@ private struct HomeworkExercisesDetailView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: "apple.logo")
                                         .font(.title2)
-                                    Text("Apple AI")
+                                    // Show "Re-analyze" if analysis exists, otherwise "Apple AI"
+                                    Text(item.analysisResult != nil ? "Re-analyze" : "Apple AI")
                                         .font(.caption)
                                         .fontWeight(.medium)
                                 }
@@ -346,7 +330,8 @@ private struct HomeworkExercisesDetailView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: "cloud.fill")
                                         .font(.title2)
-                                    Text("Google AI")
+                                    // Show "Re-analyze" since this only shows when already analyzed with cloud
+                                    Text("Re-analyze")
                                         .font(.caption)
                                         .fontWeight(.medium)
                                 }
@@ -399,10 +384,31 @@ private struct HomeworkExercisesDetailView: View {
                     .id(item.analysisJSON ?? "")
                 }
             } else {
-                // No analysis exists - show original content and analyze options
+                // Show original content (either no analysis exists, or user wants to see original)
                 VStack(spacing: 0) {
                     // Action buttons at the top
                     HStack(spacing: 12) {
+                        // View Exercises button (only if analysis exists)
+                        if let analysis = item.analysisResult, !analysis.exercises.isEmpty {
+                            Button(action: {
+                                AppLogger.ui.info("User tapped view exercises")
+                                showExercises = true
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "pencil.and.list.clipboard")
+                                        .font(.title2)
+                                    Text("View Exercises")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundColor(.blue)
+                                .cornerRadius(10)
+                            }
+                        }
+
                         // Analyze with Apple Intelligence button
                         if item.analysisStatus != .inProgress && AIAnalysisService.shared.isModelAvailable {
                             Button(action: {
@@ -412,7 +418,8 @@ private struct HomeworkExercisesDetailView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: "apple.logo")
                                         .font(.title2)
-                                    Text("Apple AI")
+                                    // Show "Re-analyze" if analysis exists, otherwise "Apple AI"
+                                    Text(item.analysisResult != nil ? "Re-analyze" : "Apple AI")
                                         .font(.caption)
                                         .fontWeight(.medium)
                                 }
@@ -434,7 +441,8 @@ private struct HomeworkExercisesDetailView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: "cloud.fill")
                                         .font(.title2)
-                                    Text("Google AI")
+                                    // Show "Re-analyze" if analysis exists, otherwise "Google AI"
+                                    Text(item.analysisResult != nil ? "Re-analyze" : "Google AI")
                                         .font(.caption)
                                         .fontWeight(.medium)
                                 }
@@ -508,6 +516,7 @@ private struct HomeworkExercisesDetailView: View {
             SettingsView()
                 .environmentObject(BiometricAuthService.shared)
         }
+        .id(item.id)  // Reset view state when item changes
     }
 
     // MARK: - Text Analysis

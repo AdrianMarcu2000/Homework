@@ -281,18 +281,18 @@ struct AssignmentDetailView: View {
         AppLogger.ui.info("User tapped analyze with \(useCloud ? "Google" : "Apple") AI")
 
         Task {
-            do {
-                // Download all image/PDF attachments
+            // Start analysis
+            await MainActor.run {
                 isAnalyzing = true
                 analysisError = nil
                 analysisProgress = nil
+            }
 
+            do {
+                // Try to download image/PDF attachments (may return empty array or throw error)
                 let images = try await assignment.downloadAllAttachments()
 
                 AppLogger.image.info("Downloaded \(images.count) attachment images for analysis")
-
-                // Combine description text with OCR from images
-                let fullText = assignment.coursework.description ?? ""
 
                 if images.isEmpty {
                     // Text-only analysis - check if we have extracted text from ODT
@@ -300,6 +300,8 @@ struct AssignmentDetailView: View {
                         AppLogger.ai.info("Using extracted text from ODT (\(extractedText.count) chars) for analysis")
                         analyzeTextOnly(text: extractedText, useCloud: useCloud)
                     } else {
+                        // Use assignment description for text-only analysis
+                        let fullText = assignment.coursework.description ?? ""
                         analyzeTextOnly(text: fullText, useCloud: useCloud)
                     }
                 } else if images.count == 1 {
@@ -311,10 +313,24 @@ struct AssignmentDetailView: View {
                 }
 
             } catch {
-                await MainActor.run {
-                    isAnalyzing = false
-                    analysisError = error.localizedDescription
-                    AppLogger.google.error("Failed to download attachments for analysis", error: error)
+                // If no attachments, try text-only analysis with description
+                let fullText = assignment.coursework.description ?? ""
+
+                if let extractedText = assignment.extractedText, !extractedText.isEmpty {
+                    // Use extracted ODT text if available
+                    AppLogger.ai.info("No attachments, using extracted ODT text (\(extractedText.count) chars) for analysis")
+                    analyzeTextOnly(text: extractedText, useCloud: useCloud)
+                } else if !fullText.isEmpty {
+                    // Use assignment description if available
+                    AppLogger.ai.info("No attachments, using assignment description (\(fullText.count) chars) for text-only analysis")
+                    analyzeTextOnly(text: fullText, useCloud: useCloud)
+                } else {
+                    // No content at all to analyze
+                    await MainActor.run {
+                        isAnalyzing = false
+                        analysisError = "This assignment has no content to analyze. Please add a description or attach files."
+                        AppLogger.google.error("No content available for analysis", error: error)
+                    }
                 }
             }
         }

@@ -148,10 +148,12 @@ class AnswerVerificationService {
         var answerImageBase64: String?
         var answerImageMimeType: String?
 
-        // If canvas type, convert drawing to image
+        // If canvas type, convert drawing to image and resize for LLM
         if answerType == "canvas", let drawing = canvasDrawing {
             let image = drawing.image(from: drawing.bounds, scale: 2.0)
-            if let imageData = image.jpegData(compressionQuality: 0.7) {
+            // Resize for LLM safety before encoding
+            let resizedImage = image.resizedForLLM()
+            if let imageData = resizedImage.jpegData(compressionQuality: 0.7) {
                 answerImageBase64 = imageData.base64EncodedString()
                 answerImageMimeType = "image/jpeg"
             }

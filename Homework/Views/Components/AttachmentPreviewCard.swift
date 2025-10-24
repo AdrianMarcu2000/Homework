@@ -73,9 +73,8 @@ struct AttachmentPreviewCard: View {
                     if let preview = previewImage {
                         Image(uiImage: preview)
                             .resizable()
-                            .scaledToFill()
+                            .scaledToFit()
                             .frame(width: 280, height: 373)
-                            .clipped()
                             .cornerRadius(10)
                     } else {
                         RoundedRectangle(cornerRadius: 10)
@@ -172,12 +171,15 @@ struct AttachmentPreviewCard: View {
                     AppLogger.google.info("📥 Downloading PDF: \(driveFile.title)")
                     let pdfData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
                     AppLogger.google.info("📄 Extracting first page from PDF: \(driveFile.title)")
-                    let preview = PDFProcessingService.shared.extractPages(from: pdfData, pageIndices: [0], scale: 1.0).first
+                    if let rawPreview = PDFProcessingService.shared.extractPages(from: pdfData, pageIndices: [0], scale: 1.0).first {
+                        // Resize to preview preset for optimal card display
+                        let preview = rawPreview.resized(for: .preview)
 
-                    await MainActor.run {
-                        self.previewImage = preview
-                        self.isLoadingPreview = false
-                        AppLogger.google.info("✅ Loaded PDF preview for: \(driveFile.title) (ID: \(uniqueID))")
+                        await MainActor.run {
+                            self.previewImage = preview
+                            self.isLoadingPreview = false
+                            AppLogger.google.info("✅ Loaded PDF preview for: \(driveFile.title) (ID: \(uniqueID))")
+                        }
                     }
                 } else if ext == "odt" {
                     // Download and render first page from ODT
@@ -185,7 +187,10 @@ struct AttachmentPreviewCard: View {
                     let odtData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
                     AppLogger.google.info("📄 Rendering first page from ODT: \(driveFile.title)")
 
-                    if let preview = ODTProcessingService.shared.renderFirstPage(from: odtData, size: CGSize(width: 280, height: 373)) {
+                    if let rawPreview = ODTProcessingService.shared.renderFirstPage(from: odtData, size: CGSize(width: 280, height: 373)) {
+                        // Already sized for preview, but ensure file size is optimized
+                        let preview = rawPreview.resized(for: .preview)
+
                         await MainActor.run {
                             self.previewImage = preview
                             self.isLoadingPreview = false
@@ -203,10 +208,15 @@ struct AttachmentPreviewCard: View {
                     AppLogger.google.info("📥 Downloading image: \(driveFile.title)")
                     let imageData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
 
-                    await MainActor.run {
-                        self.previewImage = UIImage(data: imageData)
-                        self.isLoadingPreview = false
-                        AppLogger.google.info("✅ Loaded image preview for: \(driveFile.title) (ID: \(uniqueID))")
+                    if let rawImage = UIImage(data: imageData) {
+                        // Resize to preview preset for optimal card display
+                        let preview = rawImage.resized(for: .preview)
+
+                        await MainActor.run {
+                            self.previewImage = preview
+                            self.isLoadingPreview = false
+                            AppLogger.google.info("✅ Loaded image preview for: \(driveFile.title) (ID: \(uniqueID))")
+                        }
                     }
                 }
             } catch {

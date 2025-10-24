@@ -36,8 +36,14 @@ class HomeworkAnalysisService {
         configuration: AnalysisConfiguration = AnalysisConfiguration(),
         completion: @escaping (Result<AnalysisOutput, Error>) -> Void
     ) {
-        // Perform OCR
-        OCRService.shared.recognizeTextWithBlocks(from: image) { result in
+        // Resize image for display (detail view size) - this is what we'll store
+        let displayImage = image.resized(for: .detailView)
+
+        // Further resize for LLM processing to reduce API payload
+        let llmImage = displayImage.resizedForLLM()
+
+        // Perform OCR on display image (better quality than LLM-sized)
+        OCRService.shared.recognizeTextWithBlocks(from: displayImage) { result in
             switch result {
             case .success(let ocrResult):
                 // Prepare OCR blocks with optional additional context
@@ -56,13 +62,13 @@ class HomeworkAnalysisService {
                     AppLogger.ai.info("Added context (\(context.count) chars) to OCR (\(ocrResult.fullText.count) chars)")
                 }
 
-                // Store image data
-                let imageData = image.jpegData(compressionQuality: 0.8)
+                // Store display-sized image data (optimized for viewing)
+                let imageData = displayImage.jpegData(compressionQuality: 0.85)
 
-                // Perform AI analysis
+                // Perform AI analysis with LLM-sized image (smaller for faster processing)
                 if configuration.useCloud {
                     analyzeWithCloud(
-                        image: image,
+                        image: llmImage,
                         ocrBlocks: aiBlocks,
                         extractedText: combinedText,
                         imageData: imageData,
@@ -70,7 +76,7 @@ class HomeworkAnalysisService {
                     )
                 } else {
                     analyzeWithLocal(
-                        image: image,
+                        image: llmImage,
                         ocrBlocks: aiBlocks,
                         extractedText: combinedText,
                         imageData: imageData,

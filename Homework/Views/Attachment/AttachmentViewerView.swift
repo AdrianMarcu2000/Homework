@@ -109,14 +109,28 @@ struct AttachmentViewerView: View {
             // Image viewer
             let _ = AppLogger.ui.info("File is image type, fileData size: \(fileData?.count ?? 0) bytes")
             if let fileData = fileData {
-                if let image = UIImage(data: fileData) {
-                    let _ = AppLogger.ui.info("Image loaded successfully, size: \(image.size)")
+                if let rawImage = UIImage(data: fileData) {
+                    let _ = AppLogger.ui.info("Image loaded successfully, original size: \(rawImage.size)")
+                    // Resize for detail view display (1200px max, maintains aspect ratio)
+                    let image = rawImage.resized(for: .detailView)
+                    let _ = AppLogger.ui.info("Image resized for detail view: \(image.size)")
+
                     GeometryReader { geometry in
+                        let imageAspectRatio = image.size.width / image.size.height
+                        let containerAspectRatio = geometry.size.width / geometry.size.height
+
+                        // Calculate if image should fill width or height
+                        let shouldFillWidth = imageAspectRatio > containerAspectRatio
+
                         ScrollView([.horizontal, .vertical], showsIndicators: true) {
                             Image(uiImage: image)
                                 .resizable()
-                                .scaledToFit()
-                                .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
+                                .aspectRatio(contentMode: .fit)
+                                .frame(
+                                    width: shouldFillWidth ? geometry.size.width : nil,
+                                    height: !shouldFillWidth ? geometry.size.height : nil
+                                )
+                                .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
                         }
                     }
                 } else {

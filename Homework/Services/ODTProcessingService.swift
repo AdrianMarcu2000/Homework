@@ -129,7 +129,7 @@ class ODTProcessingService {
     ///
     /// - Parameters:
     ///   - odtData: The ODT file data
-    ///   - size: The desired preview size
+    ///   - size: The desired preview size (default: 280×373 for preview cards)
     /// - Returns: Rendered first page image, or nil if rendering fails
     func renderFirstPage(from odtData: Data, size: CGSize = CGSize(width: 280, height: 373)) -> UIImage? {
         // Extract content first

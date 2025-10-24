@@ -56,13 +56,15 @@ struct ODTViewerView: View {
 
                         // Display extracted images
                         if !content.images.isEmpty {
-                            ForEach(Array(content.images.enumerated()), id: \.offset) { index, image in
+                            ForEach(Array(content.images.enumerated()), id: \.offset) { index, rawImage in
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Image \(index + 1)")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                         .padding(.horizontal)
 
+                                    // Resize embedded images for detail view display
+                                    let image = rawImage.resized(for: .detailView)
                                     Image(uiImage: image)
                                         .resizable()
                                         .scaledToFit()

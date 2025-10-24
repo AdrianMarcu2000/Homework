@@ -87,14 +87,19 @@ struct HomeworkContentView<Homework: AnalyzableHomework>: View {
             if !(homework is ClassroomAssignment),
                let imageData = homework.imageData,
                let uiImage = UIImage(data: imageData) {
-                let _ = AppLogger.ui.info("✅ Displaying downloaded image (\(imageData.count) bytes)")
+                let _ = AppLogger.ui.info("✅ Displaying downloaded image (\(imageData.count) bytes, size: \(uiImage.size))")
 
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .cornerRadius(12)
-                    .shadow(radius: 5)
-                    .padding(.horizontal)
+                // Use GeometryReader to properly constrain image to available space
+                GeometryReader { geometry in
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
+                        .cornerRadius(12)
+                        .shadow(radius: 5)
+                }
+                .frame(maxHeight: 800)  // Constrain to reasonable height for iPad
+                .padding(.horizontal)
             } else if let extractedText = homework.extractedText, !extractedText.isEmpty, !(homework is ClassroomAssignment) {
                 // For non-ClassroomAssignment items, show extracted text
                 let _ = AppLogger.ui.info("✅ Displaying extracted text content (\(extractedText.count) chars)")

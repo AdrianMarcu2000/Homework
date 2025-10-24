@@ -58,9 +58,9 @@ struct AssignmentDetailView: View {
                     showExercises: $showExercises,
                     analyzer: analyzer
                 )
-                .id(contentRefreshTrigger)
+                .id("\(assignment.id)_\(contentRefreshTrigger)")
                 .onAppear {
-                    AppLogger.ui.info("📱 AssignmentDetailView appeared for: \(assignment.title)")
+                    AppLogger.ui.info("📱 AssignmentDetailView appeared for: \(assignment.title) (ID: \(assignment.id))")
                     AppLogger.ui.info("📊 Assignment state - imageData: \(assignment.imageData != nil) (\(assignment.imageData?.count ?? 0) bytes), extractedText: \(assignment.extractedText != nil) (\(assignment.extractedText?.count ?? 0) chars)")
 
                     // Setup analyzer callbacks
@@ -251,8 +251,13 @@ struct AssignmentDetailView: View {
                     AppLogger.google.info("📊 After download - imageData: \(assignment.imageData != nil) (\(assignment.imageData?.count ?? 0) bytes), extractedText: \(assignment.extractedText != nil) (\(assignment.extractedText?.count ?? 0) chars)")
 
                     // Force view refresh by updating trigger
+                    let oldTrigger = contentRefreshTrigger
                     contentRefreshTrigger = UUID()
-                    AppLogger.ui.info("🔄 Triggered content refresh")
+                    AppLogger.ui.info("🔄 Triggered content refresh - old: \(oldTrigger), new: \(contentRefreshTrigger)")
+
+                    // Also manually trigger objectWillChange to ensure SwiftUI notices
+                    assignment.objectWillChange.send()
+                    AppLogger.ui.info("🔄 Sent objectWillChange notification")
                 }
             } catch {
                 await MainActor.run {

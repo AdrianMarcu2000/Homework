@@ -54,8 +54,9 @@ struct HomeworkContentView<Homework: AnalyzableHomework>: View {
             let extractedTextLength = homework.extractedText?.count ?? 0
             let hasDescription = (homework as? ClassroomAssignment)?.coursework.description != nil
             let descriptionLength = (homework as? ClassroomAssignment)?.coursework.description?.count ?? 0
+            let materialsCount = (homework as? ClassroomAssignment)?.coursework.materials?.count ?? 0
 
-            AppLogger.ui.info("📄 HomeworkContentView rendering - imageData: \(hasImageData) (\(imageDataSize) bytes), extractedText: \(hasExtractedText) (\(extractedTextLength) chars), description: \(hasDescription) (\(descriptionLength) chars)")
+            AppLogger.ui.info("📄 HomeworkContentView rendering - imageData: \(hasImageData) (\(imageDataSize) bytes), extractedText: \(hasExtractedText) (\(extractedTextLength) chars), description: \(hasDescription) (\(descriptionLength) chars), materials: \(materialsCount)")
         }()
 
         VStack(spacing: 20) {
@@ -81,19 +82,46 @@ struct HomeworkContentView<Homework: AnalyzableHomework>: View {
                 }
             }
 
-            // Show attached image content if available
-            if let imageData = homework.imageData,
-               let uiImage = UIImage(data: imageData) {
-                let _ = AppLogger.ui.info("✅ Displaying attached image (\(imageData.count) bytes)")
+            // Show attachments section for ClassroomAssignments
+            if let assignment = homework as? ClassroomAssignment,
+               let materials = assignment.coursework.materials, !materials.isEmpty {
+                let _ = AppLogger.ui.info("📎 Displaying \(materials.count) attachment preview cards")
 
-                if homework is ClassroomAssignment {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Attachments")
                         .font(.headline)
                         .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal)
-                        .padding(.top, 8)
+
+                    // Show preview cards for all materials
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 16) {
+                            ForEach(Array(materials.enumerated()), id: \.offset) { index, material in
+                                let materialID = generateMaterialID(assignment: assignment, material: material, index: index)
+                                NavigationLink(destination: AttachmentViewerView(material: material)) {
+                                    AttachmentPreviewCard(
+                                        material: material,
+                                        assignment: assignment,
+                                        onTap: {
+                                            let filename = material.driveFile?.driveFile.title ?? material.link?.title ?? material.youtubeVideo?.title ?? material.form?.title ?? "unknown"
+                                            AppLogger.ui.info("User tapped attachment preview: \(filename)")
+                                        }
+                                    )
+                                }
+                                .id(materialID)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
                 }
+                .padding(.top, 8)
+            }
+
+            // Show downloaded image content if available (only for non-ClassroomAssignment items)
+            if !(homework is ClassroomAssignment),
+               let imageData = homework.imageData,
+               let uiImage = UIImage(data: imageData) {
+                let _ = AppLogger.ui.info("✅ Displaying downloaded image (\(imageData.count) bytes)")
 
                 Image(uiImage: uiImage)
                     .resizable()
@@ -101,7 +129,7 @@ struct HomeworkContentView<Homework: AnalyzableHomework>: View {
                     .cornerRadius(12)
                     .shadow(radius: 5)
                     .padding(.horizontal)
-            } else if let extractedText = homework.extractedText, !extractedText.isEmpty {
+            } else if let extractedText = homework.extractedText, !extractedText.isEmpty, !(homework is ClassroomAssignment) {
                 // For non-ClassroomAssignment items, show extracted text
                 let _ = AppLogger.ui.info("✅ Displaying extracted text content (\(extractedText.count) chars)")
                 VStack(alignment: .leading, spacing: 12) {
@@ -134,6 +162,21 @@ struct HomeworkContentView<Homework: AnalyzableHomework>: View {
                 .padding(.vertical, 60)
             }
         }
+    }
+
+    /// Generate unique ID for material to prevent SwiftUI view reuse across assignments
+    private func generateMaterialID(assignment: ClassroomAssignment, material: Material, index: Int) -> String {
+        let assignmentID = assignment.id
+        if let driveFile = material.driveFile?.driveFile {
+            return "\(assignmentID)_\(driveFile.id)_\(index)"
+        } else if let link = material.link {
+            return "\(assignmentID)_\(link.url.hashValue)_\(index)"
+        } else if let video = material.youtubeVideo {
+            return "\(assignmentID)_\(video.id)_\(index)"
+        } else if let form = material.form {
+            return "\(assignmentID)_\(form.formUrl.hashValue)_\(index)"
+        }
+        return "\(assignmentID)_\(index)"
     }
 }
 
@@ -257,6 +300,204 @@ struct ExercisesListView<Homework: AnalyzableHomework>: View {
                 }
             }
             .padding(.vertical)
+        }
+    }
+}
+
+// MARK: - Attachment Preview Card
+
+/// Preview card for attachments with thumbnail and tap action
+struct AttachmentPreviewCard: View {
+    let material: Material
+    let assignment: ClassroomAssignment
+    let onTap: () -> Void
+
+    @State private var previewImage: UIImage?
+    @State private var isLoadingPreview = false
+
+    // Unique ID based on assignment and material to force reload when switching assignments
+    private var uniqueID: String {
+        if let driveFile = material.driveFile?.driveFile {
+            return "\(assignment.id)_\(driveFile.id)"
+        } else if let link = material.link {
+            return "\(assignment.id)_\(link.url)"
+        } else if let video = material.youtubeVideo {
+            return "\(assignment.id)_\(video.id)"
+        } else if let form = material.form {
+            return "\(assignment.id)_\(form.formUrl)"
+        }
+        return assignment.id
+    }
+
+    private var fileInfo: (name: String, icon: String, color: Color, label: String)? {
+        if let driveFile = material.driveFile?.driveFile {
+            let ext = (driveFile.title as NSString).pathExtension.lowercased()
+
+            switch ext {
+            case "pdf":
+                return (driveFile.title, "doc.fill", .red, "PDF")
+            case "doc", "docx":
+                return (driveFile.title, "doc.text.fill", .blue, "DOC")
+            case "xls", "xlsx":
+                return (driveFile.title, "tablecells.fill", .green, "XLS")
+            case "ppt", "pptx":
+                return (driveFile.title, "rectangle.stack.fill", .orange, "PPT")
+            case "odt":
+                return (driveFile.title, "doc.text.fill", .purple, "ODT")
+            case "txt":
+                return (driveFile.title, "doc.plaintext.fill", .gray, "TXT")
+            case "jpg", "jpeg", "png", "gif", "heic", "heif", "bmp":
+                return (driveFile.title, "photo.fill", .blue, "IMG")
+            case "zip", "rar", "7z":
+                return (driveFile.title, "archivebox.fill", .brown, "ZIP")
+            default:
+                return (driveFile.title, "doc.fill", .gray, "FILE")
+            }
+        } else if let link = material.link {
+            return (link.title ?? link.url, "link", .orange, "LINK")
+        } else if let video = material.youtubeVideo {
+            return (video.title, "play.rectangle.fill", .red, "VIDEO")
+        } else if let form = material.form {
+            return (form.title, "list.bullet.clipboard", .green, "FORM")
+        }
+
+        return nil
+    }
+
+    var body: some View {
+        if let info = fileInfo {
+            Button(action: onTap) {
+                VStack(spacing: 8) {
+                    // Preview thumbnail or icon
+                    ZStack {
+                        if let preview = previewImage {
+                            Image(uiImage: preview)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 200, height: 267)
+                                .clipped()
+                                .cornerRadius(10)
+                        } else {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(info.color.opacity(0.1))
+                                .frame(width: 200, height: 267)
+                                .overlay(
+                                    VStack(spacing: 8) {
+                                        if isLoadingPreview {
+                                            ProgressView()
+                                                .scaleEffect(0.8)
+                                        } else {
+                                            Image(systemName: info.icon)
+                                                .font(.system(size: 32))
+                                                .foregroundColor(info.color)
+                                        }
+
+                                        Text(info.label)
+                                            .font(.caption2)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(info.color)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(info.color.opacity(0.2))
+                                            .cornerRadius(4)
+                                    }
+                                )
+                        }
+
+                        // Overlay file type badge on preview
+                        if previewImage != nil {
+                            VStack {
+                                HStack {
+                                    Spacer()
+                                    Text(info.label)
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(info.color)
+                                        .cornerRadius(4)
+                                        .shadow(radius: 2)
+                                }
+                                Spacer()
+                            }
+                            .padding(6)
+                        }
+                    }
+                    .frame(width: 200, height: 267)
+
+                    // File name
+                    Text(info.name)
+                        .font(.caption)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .frame(width: 200)
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 4)
+            }
+            .buttonStyle(.plain)
+            .id(uniqueID)
+            .onAppear {
+                loadPreview()
+            }
+            .onDisappear {
+                // Clear preview when view disappears to prevent showing wrong preview
+                AppLogger.ui.info("🗑️ Clearing preview for: \(uniqueID)")
+                previewImage = nil
+                isLoadingPreview = false
+            }
+        }
+    }
+
+    private func loadPreview() {
+        // Only load previews for downloadable files
+        guard let driveFile = material.driveFile?.driveFile else { return }
+
+        let ext = (driveFile.title as NSString).pathExtension.lowercased()
+
+        // Only generate previews for supported types
+        guard ["pdf", "jpg", "jpeg", "png", "gif", "heic", "heif", "bmp"].contains(ext) else {
+            return
+        }
+
+        // ALWAYS reset state before loading - no caching, no optimization
+        AppLogger.google.info("🔄 [FRESH LOAD] Starting preview load for: \(driveFile.title) (ID: \(uniqueID))")
+        previewImage = nil
+        isLoadingPreview = true
+
+        Task {
+            do {
+                if ext == "pdf" {
+                    // Download and extract first page
+                    AppLogger.google.info("📥 Downloading PDF: \(driveFile.title)")
+                    let pdfData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
+                    AppLogger.google.info("📄 Extracting first page from PDF: \(driveFile.title)")
+                    let preview = PDFProcessingService.shared.extractPages(from: pdfData, pageIndices: [0], scale: 1.0).first
+
+                    await MainActor.run {
+                        self.previewImage = preview
+                        self.isLoadingPreview = false
+                        AppLogger.google.info("✅ Loaded PDF preview for: \(driveFile.title) (ID: \(uniqueID))")
+                    }
+                } else {
+                    // Download image directly
+                    AppLogger.google.info("📥 Downloading image: \(driveFile.title)")
+                    let imageData = try await GoogleClassroomService.shared.downloadDriveFile(fileId: driveFile.id)
+
+                    await MainActor.run {
+                        self.previewImage = UIImage(data: imageData)
+                        self.isLoadingPreview = false
+                        AppLogger.google.info("✅ Loaded image preview for: \(driveFile.title) (ID: \(uniqueID))")
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoadingPreview = false
+                    AppLogger.google.error("❌ Failed to load preview for: \(driveFile.title) (ID: \(uniqueID))", error: error)
+                }
+            }
         }
     }
 }

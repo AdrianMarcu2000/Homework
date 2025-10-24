@@ -15,8 +15,6 @@ struct CourseDetailView: View {
     @State private var coursework: [ClassroomCoursework] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var selectedAssignment: ClassroomAssignment?
-    @State private var assignmentCache: [String: ClassroomAssignment] = [:]
 
     var body: some View {
         Group {
@@ -69,7 +67,7 @@ struct CourseDetailView: View {
                 })) { courseworkItem in
                     NavigationLink {
                         AssignmentDetailView(
-                            assignment: getOrCreateAssignment(for: courseworkItem)
+                            assignment: ClassroomAssignment(coursework: courseworkItem, courseName: course.name)
                         )
                     } label: {
                         AssignmentRow(assignment: courseworkItem)
@@ -119,21 +117,6 @@ struct CourseDetailView: View {
                 isLoading = false
                 AppLogger.google.error("Failed to load coursework", error: error)
             }
-        }
-    }
-
-    /// Gets an existing assignment from cache or creates a new one
-    private func getOrCreateAssignment(for courseworkItem: ClassroomCoursework) -> ClassroomAssignment {
-        if let existingAssignment = assignmentCache[courseworkItem.id] {
-            AppLogger.ui.info("♻️ Reusing cached assignment: \(courseworkItem.title)")
-            AppLogger.ui.info("📊 Cached assignment state - imageData: \(existingAssignment.imageData != nil) (\(existingAssignment.imageData?.count ?? 0) bytes), extractedText: \(existingAssignment.extractedText != nil) (\(existingAssignment.extractedText?.count ?? 0) chars)")
-            return existingAssignment
-        } else {
-            AppLogger.ui.info("🆕 Creating new assignment: \(courseworkItem.title)")
-            let newAssignment = ClassroomAssignment(coursework: courseworkItem, courseName: course.name)
-            assignmentCache[courseworkItem.id] = newAssignment
-            AppLogger.ui.info("💾 Cached assignment (total cached: \(assignmentCache.count))")
-            return newAssignment
         }
     }
 }

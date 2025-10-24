@@ -124,6 +124,61 @@ class ODTProcessingService {
         guard let fileName = fileName?.lowercased() else { return false }
         return fileName.hasSuffix(".odt")
     }
+
+    /// Renders the first page of an ODT document as an image for preview
+    ///
+    /// - Parameters:
+    ///   - odtData: The ODT file data
+    ///   - size: The desired preview size
+    /// - Returns: Rendered first page image, or nil if rendering fails
+    func renderFirstPage(from odtData: Data, size: CGSize = CGSize(width: 280, height: 373)) -> UIImage? {
+        // Extract content first
+        guard let content = extractContent(from: odtData) else {
+            AppLogger.image.error("Failed to extract ODT content for rendering")
+            return nil
+        }
+
+        // If there are embedded images, combine them with text
+        if !content.images.isEmpty {
+            return renderPageWithImagesAndText(images: content.images, text: content.text, size: size)
+        } else {
+            // Render text-only preview
+            return renderTextOnlyPage(text: content.text, size: size)
+        }
+    }
+
+    /// Renders a page with both images and text
+    private func renderPageWithImagesAndText(images: [UIImage], text: String, size: CGSize) -> UIImage? {
+        // Use the first image as the main preview
+        return images.first
+    }
+
+    /// Renders a text-only page as an image
+    private func renderTextOnlyPage(text: String, size: CGSize) -> UIImage? {
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        let image = renderer.image { context in
+            // White background
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+
+            // Draw text
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 14),
+                .foregroundColor: UIColor.black
+            ]
+
+            let padding: CGFloat = 20
+            let textRect = CGRect(x: padding, y: padding, width: size.width - padding * 2, height: size.height - padding * 2)
+
+            // Truncate text to fit preview (first ~500 characters)
+            let previewText = String(text.prefix(500))
+            let nsString = previewText as NSString
+            nsString.draw(in: textRect, withAttributes: attributes)
+        }
+
+        return image
+    }
 }
 
 // MARK: - XML Parser Delegate

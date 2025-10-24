@@ -98,16 +98,16 @@ struct HomeworkContentView<Homework: AnalyzableHomework>: View {
                         HStack(spacing: 16) {
                             ForEach(Array(materials.enumerated()), id: \.offset) { index, material in
                                 let materialID = generateMaterialID(assignment: assignment, material: material, index: index)
+                                let filename = material.driveFile?.driveFile.title ?? material.link?.title ?? material.youtubeVideo?.title ?? material.form?.title ?? "unknown"
                                 NavigationLink(destination: AttachmentViewerView(material: material)) {
                                     AttachmentPreviewCard(
                                         material: material,
-                                        assignment: assignment,
-                                        onTap: {
-                                            let filename = material.driveFile?.driveFile.title ?? material.link?.title ?? material.youtubeVideo?.title ?? material.form?.title ?? "unknown"
-                                            AppLogger.ui.info("User tapped attachment preview: \(filename)")
-                                        }
+                                        assignment: assignment
                                     )
                                 }
+                                .simultaneousGesture(TapGesture().onEnded {
+                                    AppLogger.ui.info("User tapped attachment preview: \(filename)")
+                                })
                                 .id(materialID)
                             }
                         }
@@ -310,7 +310,6 @@ struct ExercisesListView<Homework: AnalyzableHomework>: View {
 struct AttachmentPreviewCard: View {
     let material: Material
     let assignment: ClassroomAssignment
-    let onTap: () -> Void
 
     @State private var previewImage: UIImage?
     @State private var isLoadingPreview = false
@@ -366,78 +365,75 @@ struct AttachmentPreviewCard: View {
 
     var body: some View {
         if let info = fileInfo {
-            Button(action: onTap) {
-                VStack(spacing: 8) {
-                    // Preview thumbnail or icon
-                    ZStack {
-                        if let preview = previewImage {
-                            Image(uiImage: preview)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 200, height: 267)
-                                .clipped()
-                                .cornerRadius(10)
-                        } else {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(info.color.opacity(0.1))
-                                .frame(width: 200, height: 267)
-                                .overlay(
-                                    VStack(spacing: 8) {
-                                        if isLoadingPreview {
-                                            ProgressView()
-                                                .scaleEffect(0.8)
-                                        } else {
-                                            Image(systemName: info.icon)
-                                                .font(.system(size: 32))
-                                                .foregroundColor(info.color)
-                                        }
-
-                                        Text(info.label)
-                                            .font(.caption2)
-                                            .fontWeight(.semibold)
+            VStack(spacing: 8) {
+                // Preview thumbnail or icon
+                ZStack {
+                    if let preview = previewImage {
+                        Image(uiImage: preview)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 280, height: 373)
+                            .clipped()
+                            .cornerRadius(10)
+                    } else {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(info.color.opacity(0.1))
+                            .frame(width: 280, height: 373)
+                            .overlay(
+                                VStack(spacing: 8) {
+                                    if isLoadingPreview {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: info.icon)
+                                            .font(.system(size: 32))
                                             .foregroundColor(info.color)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 3)
-                                            .background(info.color.opacity(0.2))
-                                            .cornerRadius(4)
                                     }
-                                )
-                        }
 
-                        // Overlay file type badge on preview
-                        if previewImage != nil {
-                            VStack {
-                                HStack {
-                                    Spacer()
                                     Text(info.label)
                                         .font(.caption2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 6)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(info.color)
+                                        .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
-                                        .background(info.color)
+                                        .background(info.color.opacity(0.2))
                                         .cornerRadius(4)
-                                        .shadow(radius: 2)
                                 }
-                                Spacer()
-                            }
-                            .padding(6)
-                        }
+                            )
                     }
-                    .frame(width: 200, height: 267)
 
-                    // File name
-                    Text(info.name)
-                        .font(.caption)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .frame(width: 200)
+                    // Overlay file type badge on preview
+                    if previewImage != nil {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Text(info.label)
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(info.color)
+                                    .cornerRadius(4)
+                                    .shadow(radius: 2)
+                            }
+                            Spacer()
+                        }
+                        .padding(6)
+                    }
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 4)
+                .frame(width: 280, height: 373)
+
+                // File name
+                Text(info.name)
+                    .font(.caption)
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 280)
             }
-            .buttonStyle(.plain)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
             .id(uniqueID)
             .onAppear {
                 loadPreview()

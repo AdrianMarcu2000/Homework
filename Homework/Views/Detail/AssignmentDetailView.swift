@@ -37,97 +37,36 @@ struct AssignmentDetailView: View {
     @StateObject private var analyzer = AssignmentAnalyzer()
     @State private var analysisError: String?
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
-    @State private var selectedAttachment: Material?
-    @State private var showPDFPageSelector = false
-    @State private var downloadedPDFData: Data?
-    @State private var selectedPDFFile: DriveFile?
     @State private var showExercises = false
     @State private var contentRefreshTrigger = UUID()
 
     var body: some View {
-        if let attachment = selectedAttachment {
-            // Show selected attachment in detail view
-            AttachmentViewerView(material: attachment, showBackButton: true, onBack: {
-                selectedAttachment = nil
-            })
-        } else {
-            // Use unified HomeworkDetailView with custom content overlay
-            ZStack {
-                HomeworkDetailView(
-                    homework: assignment,
-                    showExercises: $showExercises,
-                    analyzer: analyzer
-                )
-                .id("\(assignment.id)_\(contentRefreshTrigger)")
-                .onAppear {
-                    AppLogger.ui.info("📱 AssignmentDetailView appeared for: \(assignment.title) (ID: \(assignment.id))")
-                    AppLogger.ui.info("📊 Assignment state - imageData: \(assignment.imageData != nil) (\(assignment.imageData?.count ?? 0) bytes), extractedText: \(assignment.extractedText != nil) (\(assignment.extractedText?.count ?? 0) chars)")
+        // Use unified HomeworkDetailView
+        HomeworkDetailView(
+            homework: assignment,
+            showExercises: $showExercises,
+            analyzer: analyzer
+        )
+        .id("\(assignment.id)_\(contentRefreshTrigger)")
+        .onAppear {
+            AppLogger.ui.info("📱 AssignmentDetailView appeared for: \(assignment.title) (ID: \(assignment.id))")
+            AppLogger.ui.info("📊 Assignment state - imageData: \(assignment.imageData != nil) (\(assignment.imageData?.count ?? 0) bytes), extractedText: \(assignment.extractedText != nil) (\(assignment.extractedText?.count ?? 0) chars)")
 
-                    // Setup analyzer callbacks
-                    analyzer.assignment = assignment
-                    analyzer.analyzeAppleAI = { assignment in
-                        analyzeWithAI(useCloud: false)
-                    }
-                    analyzer.analyzeCloudAI = { assignment in
-                        analyzeWithAI(useCloud: true)
-                    }
-
-                    // Download attachments for display if not already downloaded
-                    if assignment.imageData == nil && assignment.extractedText == nil {
-                        AppLogger.ui.info("🔽 Starting download - no content available yet")
-                        downloadAttachmentsForDisplay()
-                    } else {
-                        AppLogger.ui.info("✅ Content already available - skipping download")
-                    }
-                }
-
-                // Overlay attachments section when no analysis exists
-                if !showExercises && (assignment.analysisResult == nil || assignment.analysisResult?.exercises.isEmpty == true) {
-                    VStack {
-                        Spacer()
-                        attachmentsSection
-                    }
-                }
+            // Setup analyzer callbacks
+            analyzer.assignment = assignment
+            analyzer.analyzeAppleAI = { assignment in
+                analyzeWithAI(useCloud: false)
             }
-        }
-    }
-
-    // MARK: - Attachments Section
-
-    private var attachmentsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Attachments list - shown when assignment has materials
-            if let materials = assignment.coursework.materials, !materials.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Attachments")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal)
-
-                    ForEach(Array(materials.enumerated()), id: \.offset) { index, material in
-                        AttachmentRowView(material: material) {
-                            selectedAttachment = material
-                        }
-                        .padding(.horizontal)
-                    }
-                }
-                .padding(.vertical)
-                .background(Color(UIColor.systemBackground).opacity(0.95))
+            analyzer.analyzeCloudAI = { assignment in
+                analyzeWithAI(useCloud: true)
             }
-        }
-        .sheet(isPresented: $showPDFPageSelector) {
-            if let pdfData = downloadedPDFData, let pdfFile = selectedPDFFile {
-                PDFPageSelectorView(
-                    pdfData: pdfData,
-                    onConfirm: { pageIndices in
-                        handlePDFPageSelection(pageIndices, pdfFile: pdfFile)
-                    },
-                    onCancel: {
-                        showPDFPageSelector = false
-                        downloadedPDFData = nil
-                        selectedPDFFile = nil
-                    }
-                )
+
+            // Download attachments for display if not already downloaded
+            if assignment.imageData == nil && assignment.extractedText == nil {
+                AppLogger.ui.info("🔽 Starting download - no content available yet")
+                downloadAttachmentsForDisplay()
+            } else {
+                AppLogger.ui.info("✅ Content already available - skipping download")
             }
         }
     }
@@ -269,24 +208,6 @@ struct AssignmentDetailView: View {
         }
     }
 
-    // MARK: - PDF Page Selection
-
-    private func handlePDFPageSelection(_ pageIndices: [Int], pdfFile: DriveFile) {
-        showPDFPageSelector = false
-
-        Task {
-            do {
-                let images = try await assignment.downloadAndProcessPDF(driveFile: pdfFile, pageIndices: pageIndices)
-                await startAnalysis()
-                await performAnalysis(images: images, useCloud: false)
-            } catch {
-                await MainActor.run {
-                    analysisError = error.localizedDescription
-                    AppLogger.google.error("Failed to process PDF pages", error: error)
-                }
-            }
-        }
-    }
 }
 
 // MARK: - String Extension

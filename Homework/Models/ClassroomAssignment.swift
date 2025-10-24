@@ -229,7 +229,15 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
     func downloadAllAttachments() async throws -> [UIImage] {
         let files = allImageAndPDFMaterials
 
+        AppLogger.google.info("🔽 downloadAllAttachments called for: \(title)")
+        AppLogger.google.info("📎 Found \(files.count) downloadable attachments")
+        for file in files {
+            let ext = (file.title as NSString).pathExtension.lowercased()
+            AppLogger.google.info("  - \(file.title) (.\(ext))")
+        }
+
         guard !files.isEmpty else {
+            AppLogger.google.error("❌ No attachments found to download")
             throw ClassroomAssignmentError.noAttachments
         }
 
@@ -297,18 +305,26 @@ class ClassroomAssignment: ObservableObject, Identifiable, AnalyzableHomework, H
                     } else {
                         self.extractedText = odtExtractedText
                     }
+                    AppLogger.google.info("✅ Set extractedText (\(self.extractedText?.count ?? 0) chars)")
                 }
 
                 // Store combined image for display (only if we have images)
                 if allImages.count == 1 {
+                    AppLogger.image.info("📸 Storing single image as JPEG")
                     self.imageData = allImages[0].jpegData(compressionQuality: 0.8)
+                    AppLogger.google.info("✅ Set imageData (\(self.imageData?.count ?? 0) bytes)")
                 } else if allImages.count > 1, let combinedImage = PDFProcessingService.shared.combineImages(allImages, spacing: 20) {
+                    AppLogger.image.info("📸 Combining \(allImages.count) images into one")
                     self.imageData = combinedImage.jpegData(compressionQuality: 0.8)
+                    AppLogger.google.info("✅ Set imageData (\(self.imageData?.count ?? 0) bytes)")
+                } else if allImages.count > 1 {
+                    AppLogger.google.error("❌ Failed to combine \(allImages.count) images")
                 }
                 self.isDownloadingImage = false
             }
 
-            AppLogger.google.info("Successfully downloaded and processed \(allImages.count) attachment(s)")
+            AppLogger.google.info("✅ Successfully downloaded and processed \(allImages.count) attachment(s)")
+            AppLogger.google.info("📊 Final state - imageData: \(self.imageData != nil) (\(self.imageData?.count ?? 0) bytes), extractedText: \(self.extractedText != nil) (\(self.extractedText?.count ?? 0) chars)")
             return allImages
         } catch {
             await MainActor.run {

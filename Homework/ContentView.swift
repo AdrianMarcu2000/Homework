@@ -42,6 +42,9 @@ struct ContentView: View {
     /// Currently selected attachment to view in detail pane
     @State private var selectedAttachment: Material?
 
+    /// Show exercises view state for selected homework item
+    @State private var showExercises = false
+
     init() {
         // Initialize with a temporary context; will use environment context
         _viewModel = StateObject(wrappedValue: HomeworkCaptureViewModel(context: PersistenceController.shared.container.viewContext))
@@ -63,10 +66,15 @@ struct ContentView: View {
                     // Clear selections when switching tabs
                     if newTab == .classroom {
                         selectedItem = nil
+                        showExercises = false
                     } else if newTab == .myHomework {
                         selectedCourse = nil
                         selectedAssignment = nil
                     }
+                }
+                .onChange(of: selectedItem) { _, _ in
+                    // Reset exercises view when switching homework items
+                    showExercises = false
                 }
 
                 // Content based on selected tab
@@ -96,11 +104,16 @@ struct ContentView: View {
                     if let item = selectedItem {
                         // Show PDF viewer for PDF homework, regular view for image homework
                         if item.isPDF {
-                            PDFHomeworkView(item: item)
+                            PDFHomeworkDetailView(item: item)
                                 .environment(\.managedObjectContext, viewContext)
                         } else {
-                            HomeworkExercisesDetailView(item: item, viewModel: viewModel)
-                                .environment(\.managedObjectContext, viewContext)
+                            HomeworkDetailView(
+                                homework: item,
+                                showExercises: $showExercises,
+                                analyzer: viewModel
+                            )
+                            .id(item.id)
+                            .environment(\.managedObjectContext, viewContext)
                         }
                     } else {
                         // Empty state for homework
@@ -123,7 +136,7 @@ struct ContentView: View {
                     if let attachment = selectedAttachment {
                         // Show attachment viewer in detail pane
                         // Use file ID to force view recreation when switching attachments
-                        AttachmentDetailView(material: attachment)
+                        AttachmentViewerView(material: attachment)
                             .id(attachment.driveFile?.driveFile.id ?? UUID().uuidString)
                     } else if let assignment = selectedAssignment {
                         AssignmentDetailView(assignment: assignment)

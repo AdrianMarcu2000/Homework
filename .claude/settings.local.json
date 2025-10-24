@@ -5,7 +5,11 @@
       "WebSearch",
       "WebFetch(domain:developers.google.com)",
       "Bash(xcodebuild:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(for:*)",
+      "Bash(do if [ -f \"$file\" ])",
+      "Bash(chmod:*)",
+      "Bash(/tmp/reorganize_views.sh:*)"
     ],
     "deny": [],
     "ask": []

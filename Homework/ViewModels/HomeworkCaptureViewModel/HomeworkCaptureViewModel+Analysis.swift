@@ -75,7 +75,8 @@ extension HomeworkCaptureViewModel {
     ///   - item: The homework item to re-analyze
     ///   - context: The Core Data context
     ///   - useCloud: Whether to use cloud analysis instead of local
-    func reanalyzeHomework(item: Item, context: NSManagedObjectContext, useCloud: Bool = false) {
+    ///   - useAgentic: Whether to use agentic (multi-agent) analysis
+    func reanalyzeHomework(item: Item, context: NSManagedObjectContext, useCloud: Bool = false, useAgentic: Bool = false) {
         // Load image from item
         guard let imageData = item.imageData,
               let image = UIImage(data: imageData) else {
@@ -91,9 +92,11 @@ extension HomeworkCaptureViewModel {
         analysisResult = nil
         analysisProgress = nil
         currentImage = image
-        isCloudAnalysisInProgress = useCloud
+        isCloudAnalysisInProgress = useCloud && !useAgentic
+        isAgenticAnalysisInProgress = useAgentic
 
-        AppLogger.ui.info("Starting homework reanalysis with \(useCloud ? "cloud" : "local") AI")
+        let analysisType = useAgentic ? "agentic" : (useCloud ? "cloud" : "local")
+        AppLogger.ui.info("Starting homework reanalysis with \(analysisType) AI")
 
         // Check if AI analysis is available
         let shouldUseAI = AIAnalysisService.shared.isModelAvailable || useCloudAnalysis
@@ -151,7 +154,9 @@ extension HomeworkCaptureViewModel {
                 }
 
                 // Step 2: Perform AI analysis
-                if useCloud {
+                if useAgentic {
+                    self.performAgenticAnalysisForReanalysis(image: image, ocrBlocks: ocrResult.blocks, item: item, context: context)
+                } else if useCloud {
                     self.performCloudAnalysisForReanalysis(image: image, ocrBlocks: ocrResult.blocks, item: item, context: context)
                 } else {
                     self.analyzeHomeworkContentForReanalysis(image: image, ocrBlocks: ocrResult.blocks, item: item, context: context)
@@ -371,6 +376,93 @@ extension HomeworkCaptureViewModel {
 
                 case .failure(let error):
                     AppLogger.cloud.error("Cloud analysis failed", error: error)
+                }
+            }
+        }
+    }
+
+    /// Performs agentic (multi-agent) analysis for re-analysis
+    func performAgenticAnalysisForReanalysis(image: UIImage, ocrBlocks: [OCRService.OCRBlock], item: Item, context: NSManagedObjectContext) {
+        DispatchQueue.main.async {
+            self.isAgenticAnalysisInProgress = true
+        }
+
+        // Convert OCR blocks to AI service format
+        let aiBlocks = ocrBlocks.map { block in
+            OCRBlock(text: block.text, y: block.y)
+        }
+
+        AppLogger.cloud.info("Starting agentic reanalysis with \(aiBlocks.count) OCR blocks")
+
+        AgenticCloudAnalysisService.shared.analyzeHomework(
+            image: image,
+            ocrBlocks: aiBlocks
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+
+                self.isAgenticAnalysisInProgress = false
+
+                switch result {
+                case .success(let agenticResponse):
+                    AppLogger.cloud.info("Agentic reanalysis successful - Subject: \(agenticResponse.routing.subject), Agent: \(agenticResponse.routing.agentUsed)")
+
+                    // Convert agentic response to standard AnalysisResult
+                    let analysis = agenticResponse.toAnalysisResult()
+                    self.analysisResult = analysis
+
+                    // Save analysis immediately
+                    do {
+                        let encoder = JSONEncoder()
+                        encoder.outputFormatting = .prettyPrinted
+                        let jsonData = try encoder.encode(analysis)
+                        if let jsonString = String(data: jsonData, encoding: .utf8) {
+                            item.analysisJSON = jsonString
+                            item.analysisMethod = "agenticAI"  // New analysis method
+                            AppLogger.persistence.info("Agentic analysis JSON saved to item - Subject: \(agenticResponse.routing.subject)")
+                        }
+                    } catch {
+                        AppLogger.persistence.error("Failed to encode agentic reanalysis result", error: error)
+                    }
+
+                    // Generate a summary for agentic analysis results
+                    AIAnalysisService.shared.generateHomeworkSummary(for: analysis) { summaryResult in
+                        DispatchQueue.main.async {
+                            self.isProcessingOCR = false
+
+                            switch summaryResult {
+                            case .success(let summary):
+                                item.extractedText = summary
+
+                            case .failure(let error):
+                                AppLogger.ai.error("Summary generation failed for agentic reanalysis", error: error)
+                                // Fallback to a detailed summary with routing info
+                                item.extractedText = """
+                                    Subject: \(agenticResponse.routing.subject)
+                                    Type: \(agenticResponse.routing.contentType)
+                                    Agent: \(agenticResponse.routing.agentUsed)
+                                    Found \(analysis.exercises.count) exercise(s)
+                                    """
+                            }
+
+                            // Save to Core Data and force refresh
+                            do {
+                                try context.save()
+                                // Force Core Data to refresh the object
+                                context.refresh(item, mergeChanges: true)
+                                AppLogger.persistence.info("Core Data saved and refreshed after agentic reanalysis")
+                            } catch {
+                                AppLogger.persistence.error("Failed to save agentic reanalysis", error: error)
+                            }
+
+                            self.reanalyzingItem = nil
+                        }
+                    }
+
+                case .failure(let error):
+                    AppLogger.cloud.error("Agentic reanalysis failed", error: error)
+                    self.isProcessingOCR = false
+                    self.reanalyzingItem = nil
                 }
             }
         }

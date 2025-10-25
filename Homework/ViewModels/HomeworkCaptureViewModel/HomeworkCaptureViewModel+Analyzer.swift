@@ -13,7 +13,7 @@ extension HomeworkCaptureViewModel {
     // MARK: - HomeworkAnalyzer Protocol
 
     var isAnalyzing: Bool {
-        isProcessingOCR || isCloudAnalysisInProgress
+        isProcessingOCR || isCloudAnalysisInProgress || isAgenticAnalysisInProgress
     }
 
     func analyzeWithAppleAI(homework: any AnalyzableHomework) {
@@ -21,7 +21,7 @@ extension HomeworkCaptureViewModel {
             AppLogger.ai.error("Cannot analyze non-Item homework with this view model")
             return
         }
-        reanalyzeHomework(item: item, context: initialContext, useCloud: false)
+        reanalyzeHomework(item: item, context: initialContext, useCloud: false, useAgentic: false)
     }
 
     func analyzeWithCloudAI(homework: any AnalyzableHomework) {
@@ -29,6 +29,14 @@ extension HomeworkCaptureViewModel {
             AppLogger.ai.error("Cannot analyze non-Item homework with this view model")
             return
         }
-        reanalyzeHomework(item: item, context: initialContext, useCloud: true)
+        reanalyzeHomework(item: item, context: initialContext, useCloud: true, useAgentic: false)
+    }
+
+    func analyzeWithAgenticAI(homework: any AnalyzableHomework) {
+        guard let item = homework as? Item else {
+            AppLogger.ai.error("Cannot analyze non-Item homework with this view model")
+            return
+        }
+        reanalyzeHomework(item: item, context: initialContext, useCloud: false, useAgentic: true)
     }
 }

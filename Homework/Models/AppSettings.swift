@@ -16,12 +16,21 @@ class AppSettings: ObservableObject {
     @AppStorage("useCloudAnalysis") var useCloudAnalysis: Bool = false
     @AppStorage("hasCloudSubscription") var hasCloudSubscription: Bool = false {
         didSet {
-            // If subscription becomes inactive, automatically disable cloud analysis
-            if !hasCloudSubscription && useCloudAnalysis {
-                useCloudAnalysis = false
+            // If subscription becomes inactive, automatically disable cloud analysis and agentic analysis
+            if !hasCloudSubscription {
+                if useCloudAnalysis {
+                    useCloudAnalysis = false
+                }
+                if useAgenticAnalysis {
+                    useAgenticAnalysis = false
+                }
             }
         }
     }
+
+    /// Enable/disable agentic (multi-agent) cloud analysis
+    /// When enabled, uses specialized agents per subject (Math, Science, Language, etc.)
+    @AppStorage("useAgenticAnalysis") var useAgenticAnalysis: Bool = false
 
     private init() {}
 }

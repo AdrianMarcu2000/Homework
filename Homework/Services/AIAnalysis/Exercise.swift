@@ -9,7 +9,7 @@
 import Foundation
 
 /// Represents an exercise segment
-public struct Exercise: Codable, Hashable {
+public struct Exercise: Codable, Hashable, Sendable {
     public let exerciseNumber: String
     public let type: String
     public let fullContent: String
@@ -38,7 +38,7 @@ public struct Exercise: Codable, Hashable {
     }
 
     // Regular init for non-decoded creation
-    public init(exerciseNumber: String, type: String, fullContent: String, startY: Double, endY: Double, subject: String? = nil, inputType: String? = "canvas") {
+    nonisolated public init(exerciseNumber: String, type: String, fullContent: String, startY: Double, endY: Double, subject: String? = nil, inputType: String? = "canvas") {
         self.exerciseNumber = exerciseNumber
         self.type = type
         self.fullContent = fullContent

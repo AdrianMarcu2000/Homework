@@ -55,9 +55,12 @@ class HomeworkCaptureViewModel: ObservableObject, HomeworkAnalyzer {
     
     /// Progress information for segment analysis
     @Published var analysisProgress: (current: Int, total: Int)? = nil
-    
+
     /// Indicates whether cloud analysis is available/in progress
     @Published var isCloudAnalysisInProgress = false
+
+    /// Indicates whether agentic analysis is in progress
+    @Published var isAgenticAnalysisInProgress = false
     
     /// Stores the OCR blocks with position information for AI analysis
     var ocrBlocks: [OCRService.OCRBlock] = []

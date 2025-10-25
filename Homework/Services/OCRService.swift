@@ -96,8 +96,9 @@ class OCRService {
                     textStrings.append(text)
 
                     // Get the Y coordinate (normalized 0.0 to 1.0, where 0 is top)
+                    // Vision uses bottom-left origin, so flip Y: (1.0 - y)
                     let boundingBox = observation.boundingBox
-                    let yCoordinate = boundingBox.origin.y
+                    let yCoordinate = 1.0 - boundingBox.origin.y
 
                     blocks.append(OCRBlock(text: text, y: yCoordinate))
                 }

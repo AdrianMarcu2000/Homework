@@ -67,16 +67,7 @@ class AnswerVerificationService {
 
     private init() {}
 
-    /// Configuration for Firebase endpoint
-    struct Config {
-        static var baseURL: String {
-            #if DEBUG
-            return "http://127.0.0.1:5001/homework-daef1/us-central1"
-            #else
-            return "https://us-central1-homework-daef1.cloudfunctions.net"
-            #endif
-        }
-    }
+    // Uses centralized FirebaseConfig - no local config needed
 
     /// Verifies an answer for a homework exercise
     ///
@@ -170,7 +161,7 @@ class AnswerVerificationService {
         )
 
         // Create URL request
-        let url = URL(string: "\(Config.baseURL)/verifyAnswer")!
+        let url = FirebaseConfig.Endpoint.verifyAnswer.url
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

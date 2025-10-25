@@ -16,6 +16,7 @@ protocol HomeworkAnalyzer {
 
     func analyzeWithAppleAI(homework: any AnalyzableHomework)
     func analyzeWithCloudAI(homework: any AnalyzableHomework)
+    func analyzeWithAgenticAI(homework: any AnalyzableHomework)
 }
 
 /// A generic detail view that works with any AnalyzableHomework type
@@ -25,6 +26,7 @@ struct HomeworkDetailView<Homework: AnalyzableHomework>: View {
     var analyzer: (any HomeworkAnalyzer)?
 
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+    @AppStorage("useAgenticAnalysis") private var useAgenticAnalysis = false
     @State private var isReanalyzing = false
     @State private var refreshTrigger = false
 
@@ -233,6 +235,19 @@ struct HomeworkDetailView<Homework: AnalyzableHomework>: View {
                             analyzer?.analyzeWithAppleAI(homework: homework)
                         }) {
                             Image(systemName: "apple.logo")
+                                .font(.body)
+                        }
+                        .disabled(isAnalyzing)
+                    }
+
+                    // Agentic AI button
+                    if useAgenticAnalysis {
+                        Button(action: {
+                            AppLogger.ui.info("User tapped analyze with Agentic AI")
+                            isReanalyzing = true
+                            analyzer?.analyzeWithAgenticAI(homework: homework)
+                        }) {
+                            Image(systemName: "sparkles")
                                 .font(.body)
                         }
                         .disabled(isAnalyzing)

@@ -70,3 +70,4 @@ node_modules/
 Homework.xcodeproj/project.xcworkspace/xcuserdata/adi.xcuserdatad/UserInterfaceState.xcuserstate
 .DS_Store
 Homework.xcodeproj/project.xcworkspace/xcuserdata/tech61.xcuserdatad/UserInterfaceState.xcuserstate
+.claude/settings.local.json

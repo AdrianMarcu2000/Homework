@@ -9,10 +9,10 @@
 import Foundation
 
 /// Analysis result containing exercises
-public struct AnalysisResult: Codable {
+public struct AnalysisResult: Codable, Sendable {
     public let exercises: [Exercise]
 
-    public init(exercises: [Exercise]) {
+    nonisolated public init(exercises: [Exercise]) {
         self.exercises = exercises
     }
 }

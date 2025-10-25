@@ -1210,3 +1210,6 @@ Return ONLY valid JSON following the schema above:`;
     functions.logger.error('💥 Failed to analyze text-only homework after retries.', lastError);
     res.status(500).send(`Failed to analyze text: ${lastError?.message || 'Unknown error occurred.'}`);
 });
+
+// Export the agentic analysis function
+export { analyzeHomeworkAgentic } from './agenticAnalysis';

@@ -16,21 +16,12 @@ class CloudAnalysisService {
 
     private init() {}
 
-    /// Configuration for Firebase endpoint
-    struct Config {
-        static var baseURL: String {
-            #if DEBUG
-            return "http://127.0.0.1:5001/homework-daef1/us-central1"
-            #else
-            return "https://us-central1-homework-daef1.cloudfunctions.net"
-            #endif
-        }
-
-        // Timeout configurations
-        static let requestTimeout: TimeInterval = 120 // 2 minutes for request
-        static let resourceTimeout: TimeInterval = 180 // 3 minutes total
-        static let maxRetries = 2
-        static let retryDelay: TimeInterval = 2
+    /// Configuration (uses centralized FirebaseConfig)
+    private struct Config {
+        static let requestTimeout = FirebaseConfig.Timeouts.standardRequest
+        static let resourceTimeout = FirebaseConfig.Timeouts.standardResource
+        static let maxRetries = FirebaseConfig.Retry.maxRetries
+        static let retryDelay = FirebaseConfig.Retry.delaySeconds
     }
 
     /// Custom URLSession with extended timeouts for cloud functions
@@ -203,7 +194,7 @@ class CloudAnalysisService {
         )
 
         // Step 4: Call Firebase endpoint with App Check token
-        let url = URL(string: "\(Config.baseURL)/analyzeHomework")!
+        let url = FirebaseConfig.Endpoint.analyzeHomework.url
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -354,7 +345,7 @@ class CloudAnalysisService {
         ]
 
         // Call Firebase endpoint with App Check token
-        let url = URL(string: "\(Config.baseURL)/analyzeTextOnly")!
+        let url = FirebaseConfig.Endpoint.analyzeTextOnly.url
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -803,7 +794,7 @@ class CloudAnalysisService {
         completion: @escaping (Result<[SimilarExercise], Error>) -> Void,
         retryCount: Int = 0
     ) {
-        let url = URL(string: "\(Config.baseURL)/generateSimilarExercises")!
+        let url = FirebaseConfig.Endpoint.generateSimilarExercises.url
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -917,7 +908,7 @@ class CloudAnalysisService {
         completion: @escaping (Result<[Hint], Error>) -> Void,
         retryCount: Int = 0
     ) {
-        let url = URL(string: "\(Config.baseURL)/generateHints")!
+        let url = FirebaseConfig.Endpoint.generateHints.url
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

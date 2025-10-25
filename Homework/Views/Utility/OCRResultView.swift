@@ -26,6 +26,9 @@ struct OCRResultView: View {
     /// Indicates whether cloud analysis is in progress
     let isCloudAnalysisInProgress: Bool
 
+    /// Indicates whether agentic analysis is in progress
+    let isAgenticAnalysisInProgress: Bool
+
     /// Callback triggered when the user taps the Save button
     var onSave: () -> Void
 
@@ -35,8 +38,14 @@ struct OCRResultView: View {
     /// Callback triggered when the user taps the Cloud Analysis button
     var onCloudAnalysis: (() -> Void)?
 
+    /// Callback triggered when the user taps the Agentic Analysis button
+    var onAgenticAnalysis: (() -> Void)?
+
     /// User setting for cloud analysis
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+
+    /// User setting for agentic analysis
+    @AppStorage("useAgenticAnalysis") private var useAgenticAnalysis = false
 
     // MARK: - Body
 
@@ -49,15 +58,32 @@ struct OCRResultView: View {
                     OCRTextContentView(text: extractedText)
                 }
             }
-            .navigationTitle(isProcessing || isCloudAnalysisInProgress ? "Analyzing Image" : "Homework Summary")
+            .navigationTitle(isProcessing || isCloudAnalysisInProgress || isAgenticAnalysisInProgress ? "Analyzing Image" : "Homework Summary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel", action: onCancel)
-                        .disabled(isCloudAnalysisInProgress)
+                        .disabled(isCloudAnalysisInProgress || isAgenticAnalysisInProgress)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 12) {
+                        // Agentic Analysis button (only show when agentic analysis is enabled in settings)
+                        if useAgenticAnalysis && !isProcessing && !extractedText.isEmpty, let agenticAction = onAgenticAnalysis {
+                            Button(action: agenticAction) {
+                                HStack(spacing: 4) {
+                                    if isAgenticAnalysisInProgress {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: "sparkles")
+                                    }
+                                    Text(isAgenticAnalysisInProgress ? "Analyzing..." : "Agentic AI")
+                                }
+                                .font(.subheadline)
+                            }
+                            .disabled(isAgenticAnalysisInProgress || isCloudAnalysisInProgress)
+                        }
+
                         // Cloud Analysis button (only show when cloud analysis is enabled in settings)
                         if useCloudAnalysis && !isProcessing && !extractedText.isEmpty, let cloudAction = onCloudAnalysis {
                             Button(action: cloudAction) {
@@ -72,11 +98,11 @@ struct OCRResultView: View {
                                 }
                                 .font(.subheadline)
                             }
-                            .disabled(isCloudAnalysisInProgress)
+                            .disabled(isCloudAnalysisInProgress || isAgenticAnalysisInProgress)
                         }
 
                         Button("Save", action: onSave)
-                            .disabled(isProcessing || extractedText.isEmpty || isCloudAnalysisInProgress)
+                            .disabled(isProcessing || extractedText.isEmpty || isCloudAnalysisInProgress || isAgenticAnalysisInProgress)
                     }
                 }
             }
@@ -132,9 +158,11 @@ private struct OCRTextContentView: View {
         isProcessing: true,
         analysisProgress: nil,
         isCloudAnalysisInProgress: false,
+        isAgenticAnalysisInProgress: false,
         onSave: {},
         onCancel: {},
-        onCloudAnalysis: {}
+        onCloudAnalysis: {},
+        onAgenticAnalysis: {}
     )
 }
 
@@ -144,9 +172,11 @@ private struct OCRTextContentView: View {
         isProcessing: true,
         analysisProgress: (current: 3, total: 7),
         isCloudAnalysisInProgress: false,
+        isAgenticAnalysisInProgress: false,
         onSave: {},
         onCancel: {},
-        onCloudAnalysis: {}
+        onCloudAnalysis: {},
+        onAgenticAnalysis: {}
     )
 }
 
@@ -156,9 +186,11 @@ private struct OCRTextContentView: View {
         isProcessing: false,
         analysisProgress: nil,
         isCloudAnalysisInProgress: false,
+        isAgenticAnalysisInProgress: false,
         onSave: {},
         onCancel: {},
-        onCloudAnalysis: {}
+        onCloudAnalysis: {},
+        onAgenticAnalysis: {}
     )
 }
 
@@ -168,8 +200,24 @@ private struct OCRTextContentView: View {
         isProcessing: false,
         analysisProgress: nil,
         isCloudAnalysisInProgress: true,
+        isAgenticAnalysisInProgress: false,
         onSave: {},
         onCancel: {},
-        onCloudAnalysis: {}
+        onCloudAnalysis: {},
+        onAgenticAnalysis: {}
+    )
+}
+
+#Preview("Agentic Analysis") {
+    OCRResultView(
+        extractedText: "Sample homework text\nLine 2\nLine 3",
+        isProcessing: false,
+        analysisProgress: nil,
+        isCloudAnalysisInProgress: false,
+        isAgenticAnalysisInProgress: true,
+        onSave: {},
+        onCancel: {},
+        onCloudAnalysis: {},
+        onAgenticAnalysis: {}
     )
 }

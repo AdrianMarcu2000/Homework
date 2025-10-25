@@ -16,6 +16,7 @@ struct SettingsView: View {
 
     @AppStorage("requireAuthentication") private var requireAuthentication = true
     @AppStorage("useCloudAnalysis") private var useCloudAnalysis = false
+    @AppStorage("useAgenticAnalysis") private var useAgenticAnalysis = false
     @State private var showingSubscription = false
 
     var body: some View {
@@ -114,6 +115,11 @@ struct SettingsView: View {
                             .onChange(of: useCloudAnalysis) { _, newValue in
                                 AppLogger.ui.info("User \(newValue ? "enabled" : "disabled") cloud analysis")
                             }
+
+                        Toggle("Use agentic (multi-agent) AI", isOn: $useAgenticAnalysis)
+                            .onChange(of: useAgenticAnalysis) { _, newValue in
+                                AppLogger.ui.info("User \(newValue ? "enabled" : "disabled") agentic analysis")
+                            }
                     } else {
                         Button(action: {
                             AppLogger.ui.info("User opened subscription view")
@@ -139,13 +145,22 @@ struct SettingsView: View {
 
                         Toggle("Use cloud analysis", isOn: $useCloudAnalysis)
                             .disabled(true)
+
+                        Toggle("Use agentic (multi-agent) AI", isOn: $useAgenticAnalysis)
+                            .disabled(true)
                     }
 
                     HStack {
-                        Image(systemName: useCloudAnalysis ? "cloud.fill" : AIAnalysisService.shared.isModelAvailable ? "iphone" : "doc.text.viewfinder")
-                            .foregroundColor(useCloudAnalysis ? .blue : AIAnalysisService.shared.isModelAvailable ? .gray : .orange)
+                        Image(systemName: useAgenticAnalysis ? "sparkles" : useCloudAnalysis ? "cloud.fill" : AIAnalysisService.shared.isModelAvailable ? "iphone" : "doc.text.viewfinder")
+                            .foregroundColor(useAgenticAnalysis ? .orange : useCloudAnalysis ? .blue : AIAnalysisService.shared.isModelAvailable ? .gray : .orange)
                         VStack(alignment: .leading, spacing: 4) {
-                            if useCloudAnalysis {
+                            if useAgenticAnalysis {
+                                Text("Using Agentic AI")
+                                    .font(.subheadline)
+                                Text("Multi-agent specialized analysis")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            } else if useCloudAnalysis {
                                 Text("Using Cloud AI")
                                     .font(.subheadline)
                                 Text("Multimodal Gemini AI analysis")
@@ -170,15 +185,15 @@ struct SettingsView: View {
                     Text("Homework Analysis")
                 } footer: {
                     if !subscriptionService.subscriptionStatus.isActive {
-                        Text("Cloud AI requires an active subscription. Subscribe to enable multimodal analysis with Google's Gemini AI for better clarity and exercise detection.")
-                    } else if AIAnalysisService.shared.isModelAvailable && useCloudAnalysis {
-                        Text("Cloud AI provides multimodal analysis with much better clarity and exercise detection compared to Apple Intelligence, which currently supports text-only processing.")
-                    } else if AIAnalysisService.shared.isModelAvailable && !useCloudAnalysis {
-                        Text("Apple Intelligence provides privacy-focused on-device analysis but is currently text-only (not multimodal). For better clarity and exercise detection, consider enabling Cloud AI.")
-                    } else if !AIAnalysisService.shared.isModelAvailable && useCloudAnalysis {
-                        Text("Cloud AI uses Google's Gemini AI for multimodal exercise detection and intelligent splitting.")
+                        Text("Cloud AI and Agentic AI require an active subscription. Subscribe to enable multimodal analysis with Google's Gemini AI for better clarity and exercise detection.")
+                    } else if useAgenticAnalysis {
+                        Text("Agentic AI uses specialized agents for Math, Science, and Language subjects. Each agent is optimized for its subject area, providing the most accurate analysis and input type recommendations.")
+                    } else if useCloudAnalysis {
+                        Text("Cloud AI provides multimodal analysis with better clarity and exercise detection. For subject-specific optimized analysis, enable Agentic AI.")
+                    } else if AIAnalysisService.shared.isModelAvailable {
+                        Text("Apple Intelligence provides privacy-focused on-device analysis but is text-only. For better clarity and exercise detection, consider enabling Cloud AI or Agentic AI.")
                     } else {
-                        Text("Apple Intelligence is not available on this device. Without cloud analysis, homework is processed with basic OCR text extraction only. All text appears as a single exercise with no AI-powered splitting.\n\nUpgrade to Cloud AI for intelligent exercise detection.")
+                        Text("Apple Intelligence is not available on this device. Without cloud analysis, homework is processed with basic OCR text extraction only.\n\nUpgrade to Cloud AI or Agentic AI for intelligent exercise detection.")
                     }
                 }
 
